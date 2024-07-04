@@ -1,0 +1,20 @@
+{
+	"folders": [
+		{
+			"path": "."
+		},
+		{
+			"path": "../../../mnt/backup/gcw-yhj/yhj-dataset"
+		},
+		{
+			"path": "../../../mnt/backup/gcw-yhj/checkpoints"
+		},
+		{
+			"path": "../../../mnt/backup/gcw-yhj/vis"
+		}
+	],
+	"settings": {
+		"editor.fontSize": 15,
+		"terminal.integrated.fontSize": 13
+	}
+}
