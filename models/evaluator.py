@@ -111,8 +111,8 @@ class CDEvaluator():
                       (self.is_training, self.batch_id, m, running_acc)
             self.logger.write(message)
 
-        # if np.mod(self.batch_id, 1) == 1:
-        if True == 1:
+        if np.mod(self.batch_id, 100) == 1:
+        # if True == 1:
             vis_input = utils.make_numpy_grid(de_norm(self.batch['A']))
             vis_input2 = utils.make_numpy_grid(de_norm(self.batch['B']))
 

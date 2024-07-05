@@ -4,13 +4,7 @@
 			"path": "."
 		},
 		{
-			"path": "../../../mnt/backup/gcw-yhj/yhj-dataset"
-		},
-		{
-			"path": "../../../mnt/backup/gcw-yhj/checkpoints"
-		},
-		{
-			"path": "../../../mnt/backup/gcw-yhj/vis"
+			"path": "../../../mnt/backup/gcw-yhj/ChangeFormer"
 		}
 	],
 	"settings": {
