@@ -3,22 +3,29 @@ import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
 
-def cross_entropy(input, target, weight=None, reduction='mean',ignore_index=255):
+def cross_entropy(input, target, weight=None, reduction='mean', ignore_index=255):
     """
-    logSoftmax_with_loss
-    :param input: torch.Tensor, N*C*H*W
-    :param target: torch.Tensor, N*1*H*W,/ N*H*W
-    :param weight: torch.Tensor, C
-    :return: torch.Tensor [0]
+    计算交叉熵损失函数
+    :param input: torch.Tensor, 输入数据张量，形状为 N*C*H*W
+    :param target: torch.Tensor, 目标标签张量，形状为 N*1*H*W 或者 N*H*W
+    :param weight: torch.Tensor, 类别权重张量，形状为 C
+    :param reduction: str, 损失的减少方法，可选值为 'mean', 'sum' 或者 'none'
+    :param ignore_index: int, 忽略索引，指定的类别索引将不参与损失计算，默认为255
+    :return: torch.Tensor, 交叉熵损失值，形状为 [0]
     """
-    target = target.long()
-    if target.dim() == 4:
-        target = torch.squeeze(target, dim=1)
-    if input.shape[-1] != target.shape[-1]:
-        input = F.interpolate(input, size=target.shape[1:], mode='bilinear',align_corners=True)
+    target = target.long()  # 将目标张量转换为长整型，确保与输入张量匹配
+    if target.dim() == 4:  # 如果目标张量的维度是4
+        target = torch.squeeze(target, dim=1)  # 压缩维度为1，假设是N*1*H*W形式的，变为N*H*W形式
 
+    # 如果输入张量的最后一个维度与目标张量的最后一个维度不匹配
+    if input.shape[-1] != target.shape[-1]:
+        # 利用双线性插值对输入张量进行调整，使其大小与目标张量的大小相匹配
+        input = F.interpolate(input, size=target.shape[1:], mode='bilinear', align_corners=True)
+
+    # 调用 PyTorch 中的交叉熵损失函数 F.cross_entropy 进行损失计算
     return F.cross_entropy(input=input, target=target, weight=weight,
                            ignore_index=ignore_index, reduction=reduction)
+
 
 #Focal Loss
 def get_alpha(supervised_loader):

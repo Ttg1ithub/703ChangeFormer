@@ -2,7 +2,7 @@ from argparse import ArgumentParser
 import torch
 from models.trainer import *
 
-print(torch.cuda.is_available())
+print("torch.cuda.is_available()",torch.cuda.is_available())
 
 """
 the main function for training the CD networks
@@ -30,7 +30,7 @@ if __name__ == '__main__':
     # args
     # ------------
     parser = ArgumentParser()
-    parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
+    parser.add_argument('--gpu_ids', type=str, default='1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
     parser.add_argument('--project_name', default='ChangeFormerV5', type=str)
     parser.add_argument('--checkpoint_root', default='/mnt/backup/gcw-yhj/ChangeFormer/checkpoints', type=str)
     parser.add_argument('--vis_root', default='/mnt/backup/gcw-yhj/ChangeFormer/vis', type=str)  

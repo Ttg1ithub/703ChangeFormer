@@ -114,7 +114,7 @@ class CDTrainer():
             raise NotImplemented(args.loss)
 
         self.VAL_ACC = np.array([], np.float32)
-        if os.path.exists(os.path.join(self.checkpoint_dir, 'val_acc.npy')):
+        if os.path.exists(1):
             self.VAL_ACC = np.load(os.path.join(self.checkpoint_dir, 'val_acc.npy'))
         self.TRAIN_ACC = np.array([], np.float32)
         if os.path.exists(os.path.join(self.checkpoint_dir, 'train_acc.npy')):

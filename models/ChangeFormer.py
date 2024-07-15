@@ -193,10 +193,22 @@ class EncoderTransformer(nn.Module):
 
 
 class OverlapPatchEmbed(nn.Module):
-    """ Image to Patch Embedding
+    """ 
+    图像到Patch嵌入模块
+    使用卷积投影将输入图像转换为Patch嵌入。
     """
 
     def __init__(self, img_size=224, patch_size=7, stride=4, in_chans=3, embed_dim=768):
+        """
+        初始化OverlapPatchEmbed模块。
+
+        Args:
+        - img_size (int or tuple): 输入图像的尺寸（默认为224）。
+        - patch_size (int or tuple): Patch的尺寸（默认为7）。
+        - stride (int or tuple): 卷积投影的步长（默认为4）。
+        - in_chans (int): 输入通道数（默认为3）。
+        - embed_dim (int): 嵌入Patch的维度（默认为768）。
+        """
         super().__init__()
         img_size = to_2tuple(img_size)
         patch_size = to_2tuple(patch_size)
@@ -212,6 +224,12 @@ class OverlapPatchEmbed(nn.Module):
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
+        """
+        初始化模型参数的权重。
+
+        Args:
+        - m (nn.Module): 要初始化的模块。
+        """
         if isinstance(m, nn.Linear):
             trunc_normal_(m.weight, std=.02)
             if isinstance(m, nn.Linear) and m.bias is not None:
@@ -222,9 +240,29 @@ class OverlapPatchEmbed(nn.Module):
         elif isinstance(m, nn.Conv2d):
             fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
             fan_out //= m.groups
-            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))
+            m.weight.data.normal_(0, math.sqrt(2.0 / fan_out))#正态分布初始化
             if m.bias is not None:
                 m.bias.data.zero_()
+
+    def forward(self, x):
+        """
+        前向传播函数，将输入图像转换为嵌入的Patch表示。
+
+        Args:
+        - x (tensor): 输入图像张量。
+
+        Returns:
+        - x (tensor): 嵌入的Patch表示B,H*W,C
+        - H (int): 输出的高度。
+        - W (int): 输出的宽度。
+        """
+        x = self.proj(x)
+        _, _, H, W = x.shape
+        x = x.flatten(2).transpose(1, 2)
+        x = self.norm(x)
+
+        return x, H, W
+
 
     def forward(self, x):
         # pdb.set_trace()
@@ -298,34 +336,46 @@ class Mlp(nn.Module):
 class Attention(nn.Module):
     def __init__(self, dim, num_heads=8, qkv_bias=False, qk_scale=None, attn_drop=0., proj_drop=0., sr_ratio=1):
         super().__init__()
-        assert dim % num_heads == 0, f"dim {dim} should be divided by num_heads {num_heads}."
+        assert dim % num_heads == 0, f"维度  {dim} 应该被  {num_heads} 整除."
 
         self.dim = dim
         self.num_heads = num_heads
         head_dim = dim // num_heads
         self.scale = qk_scale or head_dim ** -0.5
 
+        # Query投影层
         self.q = nn.Linear(dim, dim, bias=qkv_bias)
+
+        # Key和Value投影层
         self.kv = nn.Linear(dim, dim * 2, bias=qkv_bias)
+
+        # Dropout层
         self.attn_drop = nn.Dropout(attn_drop)
-        self.proj = nn.Linear(dim, dim)
         self.proj_drop = nn.Dropout(proj_drop)
+
+        # 注意力机制后的投影层
+        self.proj = nn.Linear(dim, dim)
 
         self.sr_ratio = sr_ratio
         if sr_ratio > 1:
+            # 使用Conv2d进行空间减少（降采样），并使用LayerNorm
             self.sr = nn.Conv2d(dim, dim, kernel_size=sr_ratio, stride=sr_ratio)
             self.norm = nn.LayerNorm(dim)
 
+        # 初始化权重
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
+        # 使用截断正态分布初始化Linear层的权重，并将偏置项初始化为零
         if isinstance(m, nn.Linear):
             trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
+            if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
+        # 将LayerNorm层的权重初始化为1，偏置项初始化为0
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
+        # 使用正态分布初始化Conv2d层的权重，并将偏置项初始化为零
         elif isinstance(m, nn.Conv2d):
             fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
             fan_out //= m.groups
@@ -334,11 +384,13 @@ class Attention(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, x, H, W):
-        
         B, N, C = x.shape
+
+        # 对查询（q）进行投影并重塑以进行注意力计算
         q = self.q(x).reshape(B, N, self.num_heads, C // self.num_heads).permute(0, 2, 1, 3)
 
         if self.sr_ratio > 1:
+            # 如果sr_ratio大于1，则进行空间减少（降采样）
             x_ = x.permute(0, 2, 1).reshape(B, C, H, W)
             x_ = self.sr(x_).reshape(B, C, -1).permute(0, 2, 1)
             x_ = self.norm(x_)
@@ -347,15 +399,20 @@ class Attention(nn.Module):
             kv = self.kv(x).reshape(B, -1, 2, self.num_heads, C // self.num_heads).permute(2, 0, 3, 1, 4)
         k, v = kv[0], kv[1]
 
+        # 计算注意力权重
         attn = (q @ k.transpose(-2, -1)) * self.scale
         attn = attn.softmax(dim=-1)
         attn = self.attn_drop(attn)
 
+        # 注意力加权平均得到新的表示，并转置维度以符合输出格式
         x = (attn @ v).transpose(1, 2).reshape(B, N, C)
+        
+        # 通过投影层进行线性变换
         x = self.proj(x)
         x = self.proj_drop(x)
 
         return x
+
 
 
 class Attention_dec(nn.Module):
@@ -470,31 +527,43 @@ class Block_dec(nn.Module):
 
 
 class Block(nn.Module):
-
     def __init__(self, dim, num_heads, mlp_ratio=4., qkv_bias=False, qk_scale=None, drop=0., attn_drop=0.,
                  drop_path=0., act_layer=nn.GELU, norm_layer=nn.LayerNorm, sr_ratio=1):
         super().__init__()
+
+        # 输入数据的归一化层
         self.norm1 = norm_layer(dim)
+
+        # 注意力机制（Self-Attention）
         self.attn = Attention(
             dim,
             num_heads=num_heads, qkv_bias=qkv_bias, qk_scale=qk_scale,
             attn_drop=attn_drop, proj_drop=drop, sr_ratio=sr_ratio)
 
+        # DropPath 层，用于随机深度正则化
         self.drop_path = DropPath(drop_path) if drop_path > 0. else nn.Identity()
+
+        # 注意力机制后的归一化层
         self.norm2 = norm_layer(dim)
+
+        # 多层感知机（MLP）模块
         mlp_hidden_dim = int(dim * mlp_ratio)
         self.mlp = Mlp(in_features=dim, hidden_features=mlp_hidden_dim, act_layer=act_layer, drop=drop)
 
+        # 使用自定义函数初始化权重
         self.apply(self._init_weights)
 
     def _init_weights(self, m):
+        # 使用截断正态分布初始化线性层的权重和将偏置项初始化为零
         if isinstance(m, nn.Linear):
             trunc_normal_(m.weight, std=.02)
-            if isinstance(m, nn.Linear) and m.bias is not None:
+            if m.bias is not None:
                 nn.init.constant_(m.bias, 0)
+        # 将LayerNorm层的权重初始化为1，偏置项初始化为0
         elif isinstance(m, nn.LayerNorm):
             nn.init.constant_(m.bias, 0)
             nn.init.constant_(m.weight, 1.0)
+        # 使用正态分布初始化Conv2d层的权重和将偏置项初始化为零
         elif isinstance(m, nn.Conv2d):
             fan_out = m.kernel_size[0] * m.kernel_size[1] * m.out_channels
             fan_out //= m.groups
@@ -503,10 +572,14 @@ class Block(nn.Module):
                 m.bias.data.zero_()
 
     def forward(self, x, H, W):
-
+        # 应用注意力机制、DropPath正则化和添加残差连接
         x = x + self.drop_path(self.attn(self.norm1(x), H, W))
+        
+        # 应用MLP、DropPath正则化和添加残差连接
         x = x + self.drop_path(self.mlp(self.norm2(x), H, W))
+        
         return x
+
 
 
 class DWConv(nn.Module):
@@ -1632,7 +1705,7 @@ class ChangeFormerV5(nn.Module):
         self.attn_drop = 0.0
         self.drop_path_rate = 0.1 
 
-        self.Tenc_x2    = EncoderTransformer_v3(img_size=256, patch_size = 2, in_chans=input_nc, num_classes=output_nc, embed_dims=self.embed_dims,
+        self.Tenc_x2    = EncoderTransformer_v3(img_size=256, patch_size = 3, in_chans=input_nc, num_classes=output_nc, embed_dims=self.embed_dims,
                  num_heads = [1, 2, 5, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=True, qk_scale=None, drop_rate=self.drop_rate,
                  attn_drop_rate = self.attn_drop, drop_path_rate=self.drop_path_rate, norm_layer=partial(nn.LayerNorm, eps=1e-6),
                  depths=self.depths, sr_ratios=[8, 4, 2, 1])
