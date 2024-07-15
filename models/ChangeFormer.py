@@ -19,6 +19,7 @@ import pdb
 from scipy.io import savemat
 
 from models.pixel_shuffel_up import PS_UP
+from models.adain import AdaptiveInstanceNormalization
 
 class EncoderTransformer(nn.Module):
     def __init__(self, img_size=256, patch_size=16, in_chans=3, num_classes=2, embed_dims=[64, 128, 256, 512],
@@ -1705,6 +1706,8 @@ class ChangeFormerV5(nn.Module):
         self.attn_drop = 0.0
         self.drop_path_rate = 0.1 
 
+        self.adain=AdaptiveInstanceNormalization()
+
         self.Tenc_x2    = EncoderTransformer_v3(img_size=256, patch_size = 3, in_chans=input_nc, num_classes=output_nc, embed_dims=self.embed_dims,
                  num_heads = [1, 2, 5, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=True, qk_scale=None, drop_rate=self.drop_rate,
                  attn_drop_rate = self.attn_drop, drop_path_rate=self.drop_path_rate, norm_layer=partial(nn.LayerNorm, eps=1e-6),
@@ -1717,6 +1720,12 @@ class ChangeFormerV5(nn.Module):
 
     def forward(self, x1, x2):
 
+        indices = torch.randperm(x1.size(0))
+        # 对张量的第一维（批次维度）进行顺序打乱
+        x1_shuffled = x1[indices, :, :, :]
+        x1=self.adain(x1,x1_shuffled)
+        x2_shuffled = x2[indices, :, :, :]
+        x2=self.adain(x1,x2_shuffled)
         [fx1, fx2] = [self.Tenc_x2(x1), self.Tenc_x2(x2)]
 
         cp = self.TDec_x2(fx1, fx2)
