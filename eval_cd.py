@@ -23,7 +23,7 @@ def main():
     # data
     parser.add_argument('--num_workers', default=2, type=int)
     parser.add_argument('--dataset', default='CDDataset', type=str)
-    parser.add_argument('--data_name', default='LEVIR', type=str)
+    parser.add_argument('--data_name', default='DSIFN', type=str)
 
     parser.add_argument('--batch_size', default=8, type=int)
     parser.add_argument('--split', default="test", type=str)
@@ -32,8 +32,8 @@ def main():
 
     # model
     parser.add_argument('--n_class', default=2, type=int)
-    parser.add_argument('--embed_dim', default=256, type=int)
-    parser.add_argument('--net_G', default='base_transformer_pos_s4_dd8', type=str,
+    parser.add_argument('--embed_dim', default=64, type=int)
+    parser.add_argument('--net_G', default='ChangeFormerV5', type=str,
                         help='base_resnet18 | base_transformer_pos_s4_dd8 | base_transformer_pos_s4_dd8_dedim8|')
 
     parser.add_argument('--checkpoint_name', default='best_ckpt.pt', type=str)
