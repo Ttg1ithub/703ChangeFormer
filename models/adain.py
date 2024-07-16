@@ -1,11 +1,15 @@
 import torch
 import torch.nn as nn
-
+from torchvision.utils import save_image
+import os
 
 class AdaptiveInstanceNormalization(nn.Module):
+    counter = 0
+    cts=[]
 
-    def __init__(self):
+    def __init__(self, ratio=0):
         super(AdaptiveInstanceNormalization, self).__init__()
+        self.ratio = ratio     
 
     def forward(self, x_cont, x_style=None):
         if x_style is not None:
@@ -16,6 +20,27 @@ class AdaptiveInstanceNormalization(nn.Module):
 
             normalized_x_cont = (x_cont - content_mean.expand(size))/content_std.expand(size)
             denormalized_x_cont = normalized_x_cont * style_std.expand(size) + style_mean.expand(size)
+
+            k1=torch.full(size,self.ratio).to('cuda')
+            k2=torch.full(size,1-self.ratio).to('cuda')
+                      
+            denormalized_x_cont = k1*denormalized_x_cont + k2*x_cont
+            del k1,k2
+            # 将张量沿高度方向拼接
+            # ct = torch.cat((x_cont[0], denormalized_x_cont[0]), dim=1).to('cuda:1')  # 拼接在高度（垂直方向），dim=1 表示沿着通道的方向拼接
+            # AdaptiveInstanceNormalization.cts.append(ct)
+            # 保存拼接后的张量为图像文件
+            # if len(AdaptiveInstanceNormalization.cts)==64:
+            #     concatenated_tensor=torch.cat(tuple(AdaptiveInstanceNormalization.cts),dim=2)
+            #     AdaptiveInstanceNormalization.counter+=1
+            #     AdaptiveInstanceNormalization.cts=[]
+            #     # if torch.equal(denormalized_x_cont, x_cont):
+            #     #     print("张量相等")
+            #     # else:
+            #     #     print("张量不相等!!!")
+
+            #     save_image(concatenated_tensor, os.path.join('/mnt/backup/gcw-yhj/ChangeFormer/Adain-effect',
+            #                                                  str(AdaptiveInstanceNormalization.counter)+'.png'))
 
             return denormalized_x_cont
 

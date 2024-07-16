@@ -20,6 +20,7 @@ from scipy.io import savemat
 
 from models.pixel_shuffel_up import PS_UP
 from models.adain import AdaptiveInstanceNormalization
+import matplotlib.pyplot as plt
 
 class EncoderTransformer(nn.Module):
     def __init__(self, img_size=256, patch_size=16, in_chans=3, num_classes=2, embed_dims=[64, 128, 256, 512],
@@ -1718,14 +1719,15 @@ class ChangeFormerV5(nn.Module):
                     in_channels = self.embed_dims, embedding_dim= self.embedding_dim, output_nc=output_nc, 
                     decoder_softmax = decoder_softmax, feature_strides=[2, 4, 8, 16])
 
-    def forward(self, x1, x2):
+    def forward(self, x1, x2, is_training):
+        if is_training == True:
+            indices = torch.randperm(x1.size(0))
+            # 对张量的第一维（批次维度）进行顺序打乱
+            x1_shuffled = x1[indices, :, :, :]
+            x1=self.adain(x1,x1_shuffled)
+            x2_shuffled = x2[indices, :, :, :]
+            x2=self.adain(x2,x2_shuffled)       
 
-        indices = torch.randperm(x1.size(0))
-        # 对张量的第一维（批次维度）进行顺序打乱
-        x1_shuffled = x1[indices, :, :, :]
-        x1=self.adain(x1,x1_shuffled)
-        x2_shuffled = x2[indices, :, :, :]
-        x2=self.adain(x1,x2_shuffled)
         [fx1, fx2] = [self.Tenc_x2(x1), self.Tenc_x2(x2)]
 
         cp = self.TDec_x2(fx1, fx2)

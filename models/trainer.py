@@ -114,7 +114,7 @@ class CDTrainer():
             raise NotImplemented(args.loss)
 
         self.VAL_ACC = np.array([], np.float32)
-        if os.path.exists(1):
+        if os.path.exists(os.path.join(self.checkpoint_dir, 'val_acc.npy')):
             self.VAL_ACC = np.load(os.path.join(self.checkpoint_dir, 'val_acc.npy'))
         self.TRAIN_ACC = np.array([], np.float32)
         if os.path.exists(os.path.join(self.checkpoint_dir, 'train_acc.npy')):
@@ -277,7 +277,7 @@ class CDTrainer():
         img_in1 = batch['A'].to(self.device)
         img_in2 = batch['B'].to(self.device)
         
-        self.G_pred = self.net_G(img_in1, img_in2)
+        self.G_pred = self.net_G(img_in1, img_in2, self.is_training)
 
         if self.multi_scale_infer == "True":
             self.G_final_pred = torch.zeros(self.G_pred[-1].size()).to(self.device)
@@ -325,6 +325,7 @@ class CDTrainer():
             total = len(self.dataloaders['train'])
             self.logger.write('lr: %0.7f\n \n' % self.optimizer_G.param_groups[0]['lr'])
             for self.batch_id, batch in tqdm(enumerate(self.dataloaders['train'], 0), total=total):
+                torch.cuda.empty_cache()
                 self._forward_pass(batch)
                 # update G
                 self.optimizer_G.zero_grad()
@@ -347,6 +348,7 @@ class CDTrainer():
 
             # Iterate over data.
             for self.batch_id, batch in enumerate(self.dataloaders['val'], 0):
+                torch.cuda.empty_cache()
                 with torch.no_grad():
                     self._forward_pass(batch)
                 self._collect_running_batch_states()
