@@ -1719,7 +1719,7 @@ class ChangeFormerV5(nn.Module):
                     in_channels = self.embed_dims, embedding_dim= self.embedding_dim, output_nc=output_nc, 
                     decoder_softmax = decoder_softmax, feature_strides=[2, 4, 8, 16])
 
-    def forward(self, x1, x2, is_training):
+    def forward(self, x1, x2, is_training=False):
         if is_training == True:
             indices = torch.randperm(x1.size(0))
             # 对张量的第一维（批次维度）进行顺序打乱
