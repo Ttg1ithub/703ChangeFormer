@@ -3,6 +3,23 @@ import torch.nn.functional as F
 import numpy as np
 import torch.nn as nn
 
+import torch
+import torch.nn.functional as F
+
+def kl_divergence(pred1, pred2):
+    # Flatten predictions to (B * H * W, C)
+    pred1 = pred1.view(pred1.size(0), pred1.size(1), -1)  # (B, C, H*W)
+    pred2 = pred2.view(pred2.size(0), pred2.size(1), -1)  # (B, C, H*W)
+    
+    # Compute softmax along channel dimension
+    pred1 = F.softmax(pred1, dim=1)
+    pred2 = F.softmax(pred2, dim=1)
+    
+    # KL divergence
+    kl = F.kl_div(pred1.log(), pred2, reduction='batchmean')
+    
+    return kl
+
 def cross_entropy(input, target, weight=None, reduction='mean', ignore_index=255):
     """
     计算交叉熵损失函数

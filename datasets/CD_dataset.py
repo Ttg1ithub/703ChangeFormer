@@ -119,6 +119,24 @@ class CDDataset(ImageDataset):
         
         [img, img_B], [label] = self.augm.transform([img, img_B], [label], to_tensor=self.to_tensor)
         # print(label.max())
+
+
         
         return {'name': name, 'A': img, 'B': img_B, 'L': label}
 
+class WildDataset(ImageDataset):
+
+    def __init__(self, root_dir, img_size, split='train', is_train=False,
+                    to_tensor=True):
+            super(WildDataset, self).__init__(root_dir, img_size=img_size, split=split, is_train=is_train,
+                                            to_tensor=to_tensor)
+
+    def __getitem__(self, index):
+        name = self.img_name_list[index]
+        wild_path = get_img_path(self.root_dir, self.img_name_list[index % self.A_size])
+        img_wild = np.asarray(Image.open(wild_path).convert('RGB'))
+        
+        [img_wild], _ = self.augm.transform([img_wild], [], to_tensor=self.to_tensor)
+        # print(label.max())
+
+        return  img_wild

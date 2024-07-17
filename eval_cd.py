@@ -14,18 +14,19 @@ def main():
     # args
     # ------------
     parser = ArgumentParser()
-    parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-    parser.add_argument('--project_name', default='ChangeFormerV5', type=str)
+    parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
+    parser.add_argument('--project_name', default='Adain_rand', type=str)
     parser.add_argument('--print_models', default=False, type=bool, help='print models')
     parser.add_argument('--checkpoints_root', default='/mnt/backup/gcw-yhj/ChangeFormer/checkpoints', type=str)
     parser.add_argument('--vis_root', default='/mnt/backup/gcw-yhj/ChangeFormer/vis', type=str)
 
     # data
-    parser.add_argument('--num_workers', default=2, type=int)
+    parser.add_argument('--num_workers', default=32, type=int)
     parser.add_argument('--dataset', default='CDDataset', type=str)
     parser.add_argument('--data_name', default='CDD', type=str)
+    parser.add_argument('--data_name', default='CDD', type=str)
 
-    parser.add_argument('--batch_size', default=8, type=int)
+    parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--split', default="test", type=str)
 
     parser.add_argument('--img_size', default=256, type=int)

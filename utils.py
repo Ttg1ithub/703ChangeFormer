@@ -4,7 +4,7 @@ from torch.utils.data import DataLoader
 from torchvision import utils
 
 import data_config
-from datasets.CD_dataset import CDDataset
+from datasets.CD_dataset import CDDataset, WildDataset
 
 
 def get_loader(data_name, img_size=256, batch_size=8, split='test',
@@ -47,15 +47,18 @@ def get_loaders(args):
         val_set = CDDataset(root_dir=root_dir, split=split_val,
                                  img_size=args.img_size,is_train=False,
                                  label_transform=label_transform)
+        wild_set = WildDataset(root_dir='/mnt/backup/gcw-yhj/ChangeFormer/yhj-dataset/CDData/DSIFN_256',
+                                split='val',
+                               img_size=args.img_size,is_train=False)
     else:
         raise NotImplementedError(
             'Wrong dataset name %s (choose one from [CDDataset,])'
             % args.dataset)
 
-    datasets = {'train': training_set, 'val': val_set}
+    datasets = {'train': training_set, 'val': val_set, 'wild':wild_set}
     dataloaders = {x: DataLoader(datasets[x], batch_size=args.batch_size,
                                  shuffle=True, num_workers=args.num_workers)
-                   for x in ['train', 'val']}
+                   for x in ['train', 'val', 'wild']}
 
     return dataloaders
 

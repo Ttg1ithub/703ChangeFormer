@@ -9,14 +9,15 @@ import torch
 import torch.optim as optim
 import numpy as np
 from misc.metric_tool import ConfuseMatrixMeter
-from models.losses import cross_entropy
+from models.losses import cross_entropy, kl_divergence
 import models.losses as losses
 from models.losses import get_alpha, softmax_helper, FocalLoss, mIoULoss, mmIoULoss
 
 from misc.logger_tool import Logger, Timer
 
 from utils import de_norm
-
+from datasets.adain import AdaptiveInstanceNormalization as adain
+from itertools import islice
 from tqdm import tqdm
 
 class CDTrainer():
@@ -79,6 +80,7 @@ class CDTrainer():
         self.pred_vis = None
         self.batch = None
         self.G_loss = None
+        self.G_sw_loss = None
         self.is_training = False
         self.batch_id = 0
         self.epoch_id = 0
@@ -114,7 +116,7 @@ class CDTrainer():
             raise NotImplemented(args.loss)
 
         self.VAL_ACC = np.array([], np.float32)
-        if os.path.exists(1):
+        if os.path.exists(os.path.join(self.checkpoint_dir, 'val_acc.npy')):
             self.VAL_ACC = np.load(os.path.join(self.checkpoint_dir, 'val_acc.npy'))
         self.TRAIN_ACC = np.array([], np.float32)
         if os.path.exists(os.path.join(self.checkpoint_dir, 'train_acc.npy')):
@@ -210,10 +212,10 @@ class CDTrainer():
 
         imps, est = self._timer_update()
         if np.mod(self.batch_id, 100) == 1:
-            message = 'Is_training: %s. [%d,%d][%d,%d], imps: %.2f, est: %.2fh, G_loss: %.5f, running_mf1: %.5f\n' %\
+            message = 'Is_training: %s. [%d,%d][%d,%d], imps: %.2f, est: %.2fh, G_loss: %.5f, G_sw_loss: %.5f, running_mf1: %.5f\n' %\
                       (self.is_training, self.epoch_id, self.max_num_epochs-1, self.batch_id, m,
                      imps*self.batch_size, est,
-                     self.G_loss.item(), running_acc)
+                     self.G_loss.item(),self.G_sw_loss.item(), running_acc)
             self.logger.write(message)
 
 
@@ -276,8 +278,18 @@ class CDTrainer():
         self.batch = batch
         img_in1 = batch['A'].to(self.device)
         img_in2 = batch['B'].to(self.device)
-        
-        self.G_pred = self.net_G(img_in1, img_in2)
+        if self.is_training:
+            img_wild = []
+            for _, batch in islice(enumerate(self.dataloaders['wild']),2):
+                img_wild.append(batch.to(self.device))
+            if not hasattr(self, 'adain'):
+                self.adain = adain(show=False)
+            img_sw_in1 = self.adain(img_in1,img_wild[0])
+            img_sw_in2 = self.adain(img_in2,img_wild[1])
+            if not hasattr(self,'G_sw_pred'):
+                self.G_sw_pred = None
+            self.G_sw_pred = self.net_G(img_sw_in1, img_sw_in2, self.is_training)
+        self.G_pred = self.net_G(img_in1, img_in2, self.is_training)
 
         if self.multi_scale_infer == "True":
             self.G_final_pred = torch.zeros(self.G_pred[-1].size()).to(self.device)
@@ -305,8 +317,12 @@ class CDTrainer():
             self.G_loss = temp_loss
         else:
             self.G_loss = self._pxl_loss(self.G_pred[-1], gt)
-
-        self.G_loss.backward()
+        self.G_sw_loss = kl_divergence(self.G_pred[-1],self.G_sw_pred[-1])
+        if not hasattr(self,'G_loss_all'):
+            self.G_loss_all=None
+        self.G_loss_all = self.G_loss + self.G_sw_loss
+        self.G_loss_all.backward()
+        
 
 
     def train_models(self):
@@ -324,6 +340,7 @@ class CDTrainer():
             # Iterate over data.
             total = len(self.dataloaders['train'])
             self.logger.write('lr: %0.7f\n \n' % self.optimizer_G.param_groups[0]['lr'])
+            torch.cuda.empty_cache()
             for self.batch_id, batch in tqdm(enumerate(self.dataloaders['train'], 0), total=total):
                 self._forward_pass(batch)
                 # update G
