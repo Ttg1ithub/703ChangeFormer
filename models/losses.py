@@ -6,7 +6,7 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 
-def kl_divergence(pred1, pred2):
+def kl_divergence(pred1, pred2, weight=None):
     # Flatten predictions to (B * H * W, C)
     pred1 = pred1.view(pred1.size(0), pred1.size(1), -1)  # (B, C, H*W)
     pred2 = pred2.view(pred2.size(0), pred2.size(1), -1)  # (B, C, H*W)
@@ -14,10 +14,18 @@ def kl_divergence(pred1, pred2):
     # Compute softmax along channel dimension
     pred1 = F.softmax(pred1, dim=1)
     pred2 = F.softmax(pred2, dim=1)
+    pred1 = pred1.transpose(1,2)
+    pred2 = pred2.transpose(1,2)
+    # Add a small epsilon to avoid taking log of zero
+    eps = 1e-8
+    pred1 = pred1.clamp(min=eps)
+    pred2 = pred2.clamp(min=eps)
     
     # KL divergence
-    kl = F.kl_div(pred1.log(), pred2, reduction='batchmean')
-    
+    kl = F.kl_div(pred1.log(), pred2, reduction='none')
+    kl[:,:,0] = kl[:,:,0] * weight[0]
+    kl[:,:,1] = kl[:,:,1] * weight[1]
+    kl = torch.mean(kl)
     return kl
 
 def cross_entropy(input, target, weight=None, reduction='mean', ignore_index=255):

@@ -11,7 +11,7 @@ the main function for training the CD networks
 
 def train(args):
     dataloaders = utils.get_loaders(args)
-    model = CDTrainer(args=args, dataloaders=dataloaders)
+    model = CDTrainer(args=args, dataloaders=dataloaders, use_wild=True)
     model.train_models()
 
 
@@ -31,16 +31,16 @@ if __name__ == '__main__':
     # ------------
     parser = ArgumentParser()
     parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-    parser.add_argument('--project_name', default='Adain_rand', type=str)
+    parser.add_argument('--project_name', default='Adain_weighted', type=str)
     parser.add_argument('--checkpoint_root', default='/mnt/backup/gcw-yhj/ChangeFormer/checkpoints', type=str)
     parser.add_argument('--vis_root', default='/mnt/backup/gcw-yhj/ChangeFormer/vis', type=str)  
 
     # data
-    parser.add_argument('--num_workers', default=32, type=int)
+    parser.add_argument('--num_workers', default=16, type=int)
     parser.add_argument('--dataset', default='CDDataset', type=str)
     parser.add_argument('--data_name', default='LEVIR', type=str)
 
-    parser.add_argument('--batch_size', default=32, type=int)
+    parser.add_argument('--batch_size', default=48, type=int)
     parser.add_argument('--split', default="train", type=str)
     parser.add_argument('--split_val', default="val", type=str)
 
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     # optimizer
     parser.add_argument('--optimizer', default='sgd', type=str)
     parser.add_argument('--lr', default=0.01, type=float)
-    parser.add_argument('--max_epochs', default=500, type=int)
+    parser.add_argument('--max_epochs', default=200, type=int)
     parser.add_argument('--lr_policy', default='linear', type=str,
                         help='linear | step')
     parser.add_argument('--lr_decay_iters', default=100, type=int)

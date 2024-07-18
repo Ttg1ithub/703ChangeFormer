@@ -22,10 +22,10 @@ from tqdm import tqdm
 
 class CDTrainer():
 
-    def __init__(self, args, dataloaders):
+    def __init__(self, args, dataloaders, use_wild):
         self.args = args
         self.dataloaders = dataloaders
-
+        self.use_wild = use_wild
         self.n_class = args.n_class
         # define G
         self.net_G = define_G(args=args, gpu_ids=args.gpu_ids)
@@ -215,7 +215,9 @@ class CDTrainer():
             message = 'Is_training: %s. [%d,%d][%d,%d], imps: %.2f, est: %.2fh, G_loss: %.5f, G_sw_loss: %.5f, running_mf1: %.5f\n' %\
                       (self.is_training, self.epoch_id, self.max_num_epochs-1, self.batch_id, m,
                      imps*self.batch_size, est,
-                     self.G_loss.item(),self.G_sw_loss.item(), running_acc)
+                     self.G_loss.item(),
+                     self.G_sw_loss.item() if self.G_sw_loss is not None else float('-1'), 
+                     running_acc)
             self.logger.write(message)
 
 
@@ -278,18 +280,18 @@ class CDTrainer():
         self.batch = batch
         img_in1 = batch['A'].to(self.device)
         img_in2 = batch['B'].to(self.device)
-        if self.is_training:
+        if self.use_wild and self.is_training:
             img_wild = []
             for _, batch in islice(enumerate(self.dataloaders['wild']),2):
                 img_wild.append(batch.to(self.device))
             if not hasattr(self, 'adain'):
-                self.adain = adain(show=False)
+                self.adain = adain(show=True)
             img_sw_in1 = self.adain(img_in1,img_wild[0])
             img_sw_in2 = self.adain(img_in2,img_wild[1])
             if not hasattr(self,'G_sw_pred'):
                 self.G_sw_pred = None
-            self.G_sw_pred = self.net_G(img_sw_in1, img_sw_in2, self.is_training)
-        self.G_pred = self.net_G(img_in1, img_in2, self.is_training)
+            self.G_sw_pred = self.net_G(img_sw_in1, img_sw_in2)
+        self.G_pred = self.net_G(img_in1, img_in2)
 
         if self.multi_scale_infer == "True":
             self.G_final_pred = torch.zeros(self.G_pred[-1].size()).to(self.device)
@@ -305,6 +307,7 @@ class CDTrainer():
             
     def _backward_G(self):
         gt = self.batch['L'].to(self.device).float()
+        tmp_w = torch.tensor([0.5,5]).to(self.device)
         if self.multi_scale_train == "True":
             i         = 0
             temp_loss = 0.0
@@ -316,13 +319,17 @@ class CDTrainer():
                 i+=1
             self.G_loss = temp_loss
         else:
-            self.G_loss = self._pxl_loss(self.G_pred[-1], gt)
-        self.G_sw_loss = kl_divergence(self.G_pred[-1],self.G_sw_pred[-1])
-        if not hasattr(self,'G_loss_all'):
-            self.G_loss_all=None
-        self.G_loss_all = self.G_loss + self.G_sw_loss
-        self.G_loss_all.backward()
+            self.G_loss = self._pxl_loss(self.G_pred[-1], gt, weight=tmp_w)
         
+        if self.use_wild:
+            if not hasattr(self,'G_loss_all'):
+                self.G_loss_all=None
+            self.G_sw_loss = kl_divergence(self.G_sw_pred[-1],self.G_pred[-1],weight=tmp_w)\
+                            + self._pxl_loss(self.G_sw_pred[-1], gt, weight=tmp_w)
+            self.G_loss_all = self.G_loss + self.G_sw_loss
+            self.G_loss_all.backward()
+        else: 
+            self.G_loss.backward()
 
 
     def train_models(self):
