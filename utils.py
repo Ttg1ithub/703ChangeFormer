@@ -32,8 +32,11 @@ def get_loader(data_name, img_size=256, batch_size=8, split='test',
 def get_loaders(args):
 
     data_name = args.data_name
+    WildData_name = args.WildData_name
     dataConfig = data_config.DataConfig().get_data_config(data_name)
+    WildDataConfig = data_config.DataConfig().get_data_config(WildData_name)
     root_dir = dataConfig.root_dir
+    Wildroot_dir = WildDataConfig.root_dir
     #正常转化或者一次转化
     label_transform = dataConfig.label_transform
     split = args.split
@@ -47,8 +50,7 @@ def get_loaders(args):
         val_set = CDDataset(root_dir=root_dir, split=split_val,
                                  img_size=args.img_size,is_train=False,
                                  label_transform=label_transform)
-        wild_set = WildDataset(root_dir='/mnt/backup/gcw-yhj/ChangeFormer/yhj-dataset/CDData/DSIFN_256',
-                                split='val',
+        wild_set = WildDataset(root_dir=Wildroot_dir,split='val',
                                img_size=args.img_size,is_train=False)
     else:
         raise NotImplementedError(

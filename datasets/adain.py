@@ -5,6 +5,12 @@ import numpy as np
 import os
 
 class AdaptiveInstanceNormalization(nn.Module):
+    """
+    风格迁移（有随机比例扰动
+    初始化：
+    show=False是否展示迁移图像，
+    static_ratio=0.5迁移比例
+    """
     counter = 0
     cts=[]
 
@@ -14,6 +20,13 @@ class AdaptiveInstanceNormalization(nn.Module):
         self.ratio=rand(self.static_ratio,0,1)
         self.show=show
     def forward(self, x_cont, x_style=None):
+        """
+        输入：
+        x_cont 源图像
+        x_style=None 风格图像
+        输出：
+        迁移后的图像
+        """
         if x_style is not None:
             x_style = torch.narrow(x_style, 0, 0, x_cont.size()[0])
             assert (x_cont.size()[:2] == x_style.size()[:2])

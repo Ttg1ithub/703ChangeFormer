@@ -11,7 +11,7 @@ the main function for training the CD networks
 
 def train(args):
     dataloaders = utils.get_loaders(args)
-    model = CDTrainer(args=args, dataloaders=dataloaders, use_wild=True)
+    model = CDTrainer(args=args, dataloaders=dataloaders)
     model.train_models()
 
 
@@ -39,6 +39,7 @@ if __name__ == '__main__':
     parser.add_argument('--num_workers', default=16, type=int)
     parser.add_argument('--dataset', default='CDDataset', type=str)
     parser.add_argument('--data_name', default='LEVIR', type=str)
+    parser.add_argument('--WildData_name', default='DSIFN', type=str)
 
     parser.add_argument('--batch_size', default=48, type=int)
     parser.add_argument('--split', default="train", type=str)
@@ -48,6 +49,7 @@ if __name__ == '__main__':
     parser.add_argument('--shuffle_AB', default=False, type=str)
 
     # model
+    parser.add_argument('--use_wild', default=True, type=bool)
     parser.add_argument('--n_class', default=2, type=int)
     parser.add_argument('--embed_dim', default=64, type=int)
     parser.add_argument('--pretrain', default=None, type=str)

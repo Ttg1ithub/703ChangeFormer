@@ -22,10 +22,10 @@ from tqdm import tqdm
 
 class CDTrainer():
 
-    def __init__(self, args, dataloaders, use_wild):
+    def __init__(self, args, dataloaders):
         self.args = args
         self.dataloaders = dataloaders
-        self.use_wild = use_wild
+        self.use_wild = args.use_wild
         self.n_class = args.n_class
         # define G
         self.net_G = define_G(args=args, gpu_ids=args.gpu_ids)
@@ -280,17 +280,17 @@ class CDTrainer():
         self.batch = batch
         img_in1 = batch['A'].to(self.device)
         img_in2 = batch['B'].to(self.device)
-        if self.use_wild and self.is_training:
-            img_wild = []
-            for _, batch in islice(enumerate(self.dataloaders['wild']),2):
-                img_wild.append(batch.to(self.device))
-            if not hasattr(self, 'adain'):
-                self.adain = adain(show=True)
-            img_sw_in1 = self.adain(img_in1,img_wild[0])
-            img_sw_in2 = self.adain(img_in2,img_wild[1])
-            if not hasattr(self,'G_sw_pred'):
-                self.G_sw_pred = None
-            self.G_sw_pred = self.net_G(img_sw_in1, img_sw_in2)
+        # if self.use_wild and self.is_training:
+        #     img_wild = []
+        #     for _, batch in islice(enumerate(self.dataloaders['wild']),2):
+        #         img_wild.append(batch.to(self.device))
+        #     if not hasattr(self, 'adain'):
+        #         self.adain = adain(show=True)
+        #     img_sw_in1 = self.adain(img_in1,img_wild[0])
+        #     img_sw_in2 = self.adain(img_in2,img_wild[1])
+        #     if not hasattr(self,'G_sw_pred'):
+        #         self.G_sw_pred = None
+        #     self.G_sw_pred = self.net_G(img_sw_in1, img_sw_in2)
         self.G_pred = self.net_G(img_in1, img_in2)
 
         if self.multi_scale_infer == "True":
@@ -321,15 +321,15 @@ class CDTrainer():
         else:
             self.G_loss = self._pxl_loss(self.G_pred[-1], gt, weight=tmp_w)
         
-        if self.use_wild:
-            if not hasattr(self,'G_loss_all'):
-                self.G_loss_all=None
-            self.G_sw_loss = kl_divergence(self.G_sw_pred[-1],self.G_pred[-1],weight=tmp_w)\
-                            + self._pxl_loss(self.G_sw_pred[-1], gt, weight=tmp_w)
-            self.G_loss_all = self.G_loss + self.G_sw_loss
-            self.G_loss_all.backward()
-        else: 
-            self.G_loss.backward()
+        # if self.use_wild:
+        #     if not hasattr(self,'G_loss_all'):
+        #         self.G_loss_all=None
+        #     self.G_sw_loss = kl_divergence(self.G_sw_pred[-1],self.G_pred[-1],weight=tmp_w)\
+        #                     + self._pxl_loss(self.G_sw_pred[-1], gt, weight=tmp_w)
+        #     self.G_loss_all = self.G_loss + self.G_sw_loss
+        #     self.G_loss_all.backward()
+        # else: 
+        self.G_loss.backward()
 
 
     def train_models(self):

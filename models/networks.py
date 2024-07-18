@@ -14,6 +14,7 @@ from models.SiamUnet_diff import SiamUnet_diff
 from models.SiamUnet_conc import SiamUnet_conc
 from models.Unet import Unet
 from models.DTCDSCN import CDNet34
+from datasets.adain import AdaptiveInstanceNormalization as adain
 
 ###############################################################################
 # Helper Functions
@@ -291,6 +292,7 @@ class BASE_Transformer(ResNet):
                                                if_upsample_2x=if_upsample_2x,
                                                )
         self.token_len = token_len
+        self.adain = adain(show=True)
         self.conv_a = nn.Conv2d(32, self.token_len, kernel_size=1,
                                 padding=0, bias=False)
         self.tokenizer = tokenizer
