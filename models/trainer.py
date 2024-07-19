@@ -19,6 +19,7 @@ from utils import de_norm
 from datasets.adain import AdaptiveInstanceNormalization as adain
 from itertools import islice
 from tqdm import tqdm
+from memory_profiler import profile
 
 class CDTrainer():
 
@@ -163,7 +164,7 @@ class CDTrainer():
         else:
             print('training from scratch...')
         print("\n")
-
+    
     def _timer_update(self):
         self.global_step = (self.epoch_id-self.epoch_to_start) * self.steps_per_epoch + self.batch_id
 
@@ -201,7 +202,7 @@ class CDTrainer():
 
         current_score = self.running_metric.update_cm(pr=G_pred.cpu().numpy(), gt=target.cpu().numpy())
         return current_score
-
+    
     def _collect_running_batch_states(self):
 
         running_acc = self._update_metric()
@@ -275,23 +276,14 @@ class CDTrainer():
     def _clear_cache(self):
         self.running_metric.clear()
 
-
-    def _forward_pass(self, batch):
+    def _forward_pass(self, batch, img_wild=None):
         self.batch = batch
         img_in1 = batch['A'].to(self.device)
         img_in2 = batch['B'].to(self.device)
-        # if self.use_wild and self.is_training:
-        #     img_wild = []
-        #     for _, batch in islice(enumerate(self.dataloaders['wild']),2):
-        #         img_wild.append(batch.to(self.device))
-        #     if not hasattr(self, 'adain'):
-        #         self.adain = adain(show=True)
-        #     img_sw_in1 = self.adain(img_in1,img_wild[0])
-        #     img_sw_in2 = self.adain(img_in2,img_wild[1])
-        #     if not hasattr(self,'G_sw_pred'):
-        #         self.G_sw_pred = None
-        #     self.G_sw_pred = self.net_G(img_sw_in1, img_sw_in2)
-        self.G_pred = self.net_G(img_in1, img_in2)
+        if img_wild is not None:
+            img_wild = img_wild.to(self.device)
+        
+        self.G_pred = self.net_G(img_in1, img_in2, img_wild)
 
         if self.multi_scale_infer == "True":
             self.G_final_pred = torch.zeros(self.G_pred[-1].size()).to(self.device)
@@ -303,8 +295,7 @@ class CDTrainer():
             self.G_final_pred = self.G_final_pred/len(self.G_pred)
         else:
             self.G_final_pred = self.G_pred[-1]
-
-            
+      
     def _backward_G(self):
         gt = self.batch['L'].to(self.device).float()
         tmp_w = torch.tensor([0.5,5]).to(self.device)
@@ -321,16 +312,15 @@ class CDTrainer():
         else:
             self.G_loss = self._pxl_loss(self.G_pred[-1], gt, weight=tmp_w)
         
-        # if self.use_wild:
-        #     if not hasattr(self,'G_loss_all'):
-        #         self.G_loss_all=None
-        #     self.G_sw_loss = kl_divergence(self.G_sw_pred[-1],self.G_pred[-1],weight=tmp_w)\
-        #                     + self._pxl_loss(self.G_sw_pred[-1], gt, weight=tmp_w)
-        #     self.G_loss_all = self.G_loss + self.G_sw_loss
-        #     self.G_loss_all.backward()
-        # else: 
-        self.G_loss.backward()
-
+        if self.use_wild:
+            if not hasattr(self,'G_loss_all'):
+                self.G_loss_all=None
+            self.G_sw_loss = self._pxl_loss(self.G_pred[-2], gt, weight=tmp_w) \
+                        +kl_divergence(self.G_pred[-2],self.G_pred[-1],weight=tmp_w)
+            self.G_loss_all = self.G_loss + self.G_sw_loss
+            self.G_loss_all.backward()
+        else: 
+            self.G_loss.backward()
 
     def train_models(self):
 
@@ -349,7 +339,10 @@ class CDTrainer():
             self.logger.write('lr: %0.7f\n \n' % self.optimizer_G.param_groups[0]['lr'])
             torch.cuda.empty_cache()
             for self.batch_id, batch in tqdm(enumerate(self.dataloaders['train'], 0), total=total):
-                self._forward_pass(batch)
+                if self.use_wild:                    
+                    for _, img_wild in islice(enumerate(self.dataloaders['wild']),1):
+                        pass
+                self._forward_pass(batch,img_wild)
                 # update G
                 self.optimizer_G.zero_grad()
                 self._backward_G()

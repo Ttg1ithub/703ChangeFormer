@@ -3,6 +3,7 @@ import torch.nn as nn
 from torchvision.utils import save_image
 import numpy as np
 import os
+from memory_profiler import profile
 
 class AdaptiveInstanceNormalization(nn.Module):
     """
@@ -19,6 +20,7 @@ class AdaptiveInstanceNormalization(nn.Module):
         self.static_ratio = static_ratio     
         self.ratio=rand(self.static_ratio,0,1)
         self.show=show
+    
     def forward(self, x_cont, x_style=None):
         """
         输入：
@@ -41,22 +43,22 @@ class AdaptiveInstanceNormalization(nn.Module):
             k2=torch.full(size,1-self.ratio).to('cuda')
             self.ratio=rand(self.static_ratio,0,1)          
             denormalized_x_cont = k1*denormalized_x_cont + k2*x_cont
-            del k1,k2
-            #将张量沿高度方向拼接
-            ct = torch.cat((x_cont[0], denormalized_x_cont[0]), dim=1).to('cuda:1')  # 拼接在高度（垂直方向），dim=1 表示沿着通道的方向拼接
-            AdaptiveInstanceNormalization.cts.append(ct)
-            #保存拼接后的张量为图像文件
-            if self.show and len(AdaptiveInstanceNormalization.cts)==64:
-                concatenated_tensor=torch.cat(tuple(AdaptiveInstanceNormalization.cts),dim=2)
-                AdaptiveInstanceNormalization.counter+=1
-                AdaptiveInstanceNormalization.cts=[]
-                # if torch.equal(denormalized_x_cont, x_cont):
-                #     print("张量相等")
-                # else:
-                #     print("张量不相等!!!")
+            # del k1,k2
+            # #将张量沿高度方向拼接
+            # ct = torch.cat((x_cont[0], denormalized_x_cont[0]), dim=1).to('cuda:1')  # 拼接在高度（垂直方向），dim=1 表示沿着通道的方向拼接
+            # AdaptiveInstanceNormalization.cts.append(ct)
+            # #保存拼接后的张量为图像文件
+            # if self.show and len(AdaptiveInstanceNormalization.cts)==1:
+            #     concatenated_tensor=torch.cat(tuple(AdaptiveInstanceNormalization.cts),dim=2)
+            #     AdaptiveInstanceNormalization.counter+=1
+            #     AdaptiveInstanceNormalization.cts=[]
+            #     # if torch.equal(denormalized_x_cont, x_cont):
+            #     #     print("张量相等")
+            #     # else:
+            #     #     print("张量不相等!!!")
 
-                save_image(concatenated_tensor, os.path.join('/mnt/backup/gcw-yhj/ChangeFormer/Adain-effect',
-                                                             str(AdaptiveInstanceNormalization.counter)+'.png'))
+            #     save_image(concatenated_tensor, os.path.join('/mnt/backup/gcw-yhj/ChangeFormer/Adain-effect',
+            #                                                  str(AdaptiveInstanceNormalization.counter)+'.png'))
 
             return denormalized_x_cont
 

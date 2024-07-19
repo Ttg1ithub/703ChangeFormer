@@ -15,6 +15,8 @@ from models.SiamUnet_conc import SiamUnet_conc
 from models.Unet import Unet
 from models.DTCDSCN import CDNet34
 from datasets.adain import AdaptiveInstanceNormalization as adain
+from memory_profiler import profile
+import objgraph as graph
 
 ###############################################################################
 # Helper Functions
@@ -215,7 +217,10 @@ class ResNet(torch.nn.Module):
         self.relu = nn.ReLU()
         self.upsamplex2 = nn.Upsample(scale_factor=2)
         self.upsamplex4 = nn.Upsample(scale_factor=4, mode='bilinear')
+        self.tmp_seq = torch.nn.Sequential(self.resnet.bn1,self.resnet.relu,
+                                self.resnet.maxpool,self.resnet.layer1)
 
+        self.adain = adain(show=False)
         self.classifier = TwoLayerConv2d(in_channels=32, out_channels=output_nc)
 
         self.resnet_stages_num = resnet_stages_num
@@ -247,16 +252,7 @@ class ResNet(torch.nn.Module):
             x = self.sigmoid(x)
         return x
 
-    def forward_single(self, x):
-        # resnet layers
-        x = self.resnet.conv1(x)
-        x = self.resnet.bn1(x)
-        x = self.resnet.relu(x)
-        x = self.resnet.maxpool(x)
-
-        x_4 = self.resnet.layer1(x) # 1/4, in=64, out=64
-        x_8 = self.resnet.layer2(x_4) # 1/8, in=64, out=128
-
+    def _res_next(self, x_8):
         if self.resnet_stages_num > 3:
             x_8 = self.resnet.layer3(x_8) # 1/8, in=128, out=256
 
@@ -272,7 +268,33 @@ class ResNet(torch.nn.Module):
         # output layers
         x = self.conv_pred(x)
         return x
-
+    
+    def forward_single(self, x, xw=None):
+        # resnet layers
+        x = self.resnet.conv1(x)
+        if xw is not None:
+            xw = self.resnet.conv1(xw)
+            x_sw = self.adain(x,xw)
+        # x = self.resnet.bn1(x)
+        # x = self.resnet.relu(x)
+        # x = self.resnet.maxpool(x)
+        x_4 = self.tmp_seq(x)
+        # x_4 = self.resnet.layer1(x) # 1/4, in=64, out=64
+        if xw is not None:
+            x_sw = self.tmp_seq(x_sw)
+            xw = self.tmp_seq(xw)
+            x_sw = self.adain(x_sw, xw)
+        x_8 = self.resnet.layer2(x_4) # 1/8, in=64, out=128
+        if xw is not None:
+            x_sw = self.resnet.layer2(x_sw)
+            xw = self.resnet.layer2(xw)
+            x_sw = self.adain(x_sw, xw)
+        x = self._res_next(x_8)
+        if xw is None:
+            x_sw = torch.tensor([-1.0])
+        else:
+            x_sw = self._res_next(x_sw)
+        return x, x_sw
 
 class BASE_Transformer(ResNet):
     """
@@ -292,7 +314,6 @@ class BASE_Transformer(ResNet):
                                                if_upsample_2x=if_upsample_2x,
                                                )
         self.token_len = token_len
-        self.adain = adain(show=True)
         self.conv_a = nn.Conv2d(32, self.token_len, kernel_size=1,
                                 padding=0, bias=False)
         self.tokenizer = tokenizer
@@ -374,11 +395,7 @@ class BASE_Transformer(ResNet):
         x = x + m
         return x
 
-    def forward(self, x1, x2):
-        # forward backbone resnet
-        x1 = self.forward_single(x1)
-        x2 = self.forward_single(x2)
-
+    def _forward_next(self, x1, x2):
         #  forward tokenzier
         if self.tokenizer:
             token1 = self._forward_semantic_tokens(x1)
@@ -407,8 +424,16 @@ class BASE_Transformer(ResNet):
         x = self.classifier(x)
         if self.output_sigmoid:
             x = self.sigmoid(x)
+        return x
+    
+    def forward(self, x1, x2, img_wild=None):
+        # forward backbone resnet
+        x1, x1_sw = self.forward_single(x1,img_wild)
+        x2, x2_sw = self.forward_single(x2,img_wild)
         outputs = []
-        outputs.append(x)
+        if img_wild is not None:
+            outputs.append(self._forward_next(x1_sw,x2_sw))
+        outputs.append(self._forward_next(x1,x2))
         return outputs
 
 
