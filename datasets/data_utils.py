@@ -115,7 +115,7 @@ class CDDataAugmentation:
                     for img in labels]
 
         if self.with_random_blur and random.random() > 0:
-            radius = random.random()
+            radius = random.random() + 1
             imgs = [img.filter(ImageFilter.GaussianBlur(radius=radius))
                     for img in imgs]
 

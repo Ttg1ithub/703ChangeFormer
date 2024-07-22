@@ -276,14 +276,15 @@ class CDTrainer():
     def _clear_cache(self):
         self.running_metric.clear()
 
-    def _forward_pass(self, batch, img_wild=None):
+    def _forward_pass(self, batch, imgs_wild=None):
         self.batch = batch
         img_in1 = batch['A'].to(self.device)
         img_in2 = batch['B'].to(self.device)
-        if img_wild is not None:
-            img_wild = img_wild.to(self.device)
+        if imgs_wild is not None:
+            for img_wild in imgs_wild:
+                img_wild = img_wild.to(self.device)
         
-        self.G_pred = self.net_G(img_in1, img_in2, img_wild)
+        self.G_pred = self.net_G(img_in1, img_in2, imgs_wild)
 
         if self.multi_scale_infer == "True":
             self.G_final_pred = torch.zeros(self.G_pred[-1].size()).to(self.device)
@@ -339,10 +340,13 @@ class CDTrainer():
             self.logger.write('lr: %0.7f\n \n' % self.optimizer_G.param_groups[0]['lr'])
             torch.cuda.empty_cache()
             for self.batch_id, batch in tqdm(enumerate(self.dataloaders['train'], 0), total=total):
-                if self.use_wild:                    
-                    for _, img_wild in islice(enumerate(self.dataloaders['wild']),1):
-                        pass
-                self._forward_pass(batch,img_wild)
+                if self.use_wild:
+                    imgs_wild = []                    
+                    for _, img_wild in islice(enumerate(self.dataloaders['wild']),2):
+                        imgs_wild.append(img_wild)
+                    self._forward_pass(batch,imgs_wild)
+                else:
+                    self._forward_pass(batch)
                 # update G
                 self.optimizer_G.zero_grad()
                 self._backward_G()

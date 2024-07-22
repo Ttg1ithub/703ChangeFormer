@@ -217,8 +217,8 @@ class ResNet(torch.nn.Module):
         self.relu = nn.ReLU()
         self.upsamplex2 = nn.Upsample(scale_factor=2)
         self.upsamplex4 = nn.Upsample(scale_factor=4, mode='bilinear')
-        self.tmp_seq = torch.nn.Sequential(self.resnet.bn1,self.resnet.relu,
-                                self.resnet.maxpool,self.resnet.layer1)
+        # self.tmp_seq = torch.nn.Sequential(self.resnet.bn1,self.resnet.relu,
+        #                         self.resnet.maxpool,self.resnet.layer1)
 
         self.adain = adain(show=False)
         self.classifier = TwoLayerConv2d(in_channels=32, out_channels=output_nc)
@@ -252,6 +252,13 @@ class ResNet(torch.nn.Module):
             x = self.sigmoid(x)
         return x
 
+    def _res_first(self, x):
+        x = self.resnet.bn1(x)
+        x = self.resnet.relu(x)
+        x = self.resnet.maxpool(x)
+        x_4 = self.resnet.layer1(x) # 1/4, in=64, out=64
+        return x_4
+
     def _res_next(self, x_8):
         if self.resnet_stages_num > 3:
             x_8 = self.resnet.layer3(x_8) # 1/8, in=128, out=256
@@ -278,11 +285,11 @@ class ResNet(torch.nn.Module):
         # x = self.resnet.bn1(x)
         # x = self.resnet.relu(x)
         # x = self.resnet.maxpool(x)
-        x_4 = self.tmp_seq(x)
+        x_4 = self._res_first(x)
         # x_4 = self.resnet.layer1(x) # 1/4, in=64, out=64
         if xw is not None:
-            x_sw = self.tmp_seq(x_sw)
-            xw = self.tmp_seq(xw)
+            x_sw = self._res_first(x_sw)
+            xw = self._res_first(xw)
             x_sw = self.adain(x_sw, xw)
         x_8 = self.resnet.layer2(x_4) # 1/8, in=64, out=128
         if xw is not None:
@@ -426,12 +433,16 @@ class BASE_Transformer(ResNet):
             x = self.sigmoid(x)
         return x
     
-    def forward(self, x1, x2, img_wild=None):
+    def forward(self, x1, x2, imgs_wild=None):
         # forward backbone resnet
-        x1, x1_sw = self.forward_single(x1,img_wild)
-        x2, x2_sw = self.forward_single(x2,img_wild)
+        if imgs_wild is None:
+            x1, x1_sw = self.forward_single(x1)
+            x2, x2_sw = self.forward_single(x2)
+        else:
+            x1, x1_sw = self.forward_single(x1,imgs_wild[0])
+            x2, x2_sw = self.forward_single(x2,imgs_wild[1])
         outputs = []
-        if img_wild is not None:
+        if imgs_wild is not None:
             outputs.append(self._forward_next(x1_sw,x2_sw))
         outputs.append(self._forward_next(x1,x2))
         return outputs

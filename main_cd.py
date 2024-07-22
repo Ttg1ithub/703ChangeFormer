@@ -31,17 +31,17 @@ if __name__ == '__main__':
     # ------------
     parser = ArgumentParser()
     parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-    parser.add_argument('--project_name', default='Adain_feature', type=str)
+    parser.add_argument('--project_name', default='base_off', type=str)
     parser.add_argument('--checkpoint_root', default='/mnt/backup/gcw-yhj/ChangeFormer/checkpoints', type=str)
     parser.add_argument('--vis_root', default='/mnt/backup/gcw-yhj/ChangeFormer/vis', type=str)  
 
     # data
-    parser.add_argument('--num_workers', default=20, type=int)
+    parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--dataset', default='CDDataset', type=str)
     parser.add_argument('--data_name', default='LEVIR', type=str)
     parser.add_argument('--WildData_name', default='DSIFN', type=str)
 
-    parser.add_argument('--batch_size', default=40, type=int)
+    parser.add_argument('--batch_size', default=16, type=int)
     parser.add_argument('--split', default="train", type=str)
     parser.add_argument('--split_val', default="val", type=str)
 
@@ -49,7 +49,7 @@ if __name__ == '__main__':
     parser.add_argument('--shuffle_AB', default=False, type=str)
 
     # model
-    parser.add_argument('--use_wild', default=True, type=bool)
+    parser.add_argument('--use_wild', default=False, type=bool)
     parser.add_argument('--n_class', default=2, type=int)
     parser.add_argument('--embed_dim', default=64, type=int)
     parser.add_argument('--pretrain', default=None, type=str)
@@ -66,7 +66,7 @@ if __name__ == '__main__':
     # optimizer
     parser.add_argument('--optimizer', default='sgd', type=str)
     parser.add_argument('--lr', default=0.01, type=float)
-    parser.add_argument('--max_epochs', default=200, type=int)
+    parser.add_argument('--max_epochs', default=250, type=int)
     parser.add_argument('--lr_policy', default='linear', type=str,
                         help='linear | step')
     parser.add_argument('--lr_decay_iters', default=100, type=int)

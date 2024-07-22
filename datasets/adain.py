@@ -15,7 +15,7 @@ class AdaptiveInstanceNormalization(nn.Module):
     counter = 0
     cts=[]
 
-    def __init__(self, show=False, static_ratio=0.5):
+    def __init__(self, show=False, static_ratio=1):
         super(AdaptiveInstanceNormalization, self).__init__()
         self.static_ratio = static_ratio     
         self.ratio=rand(self.static_ratio,0,1)
