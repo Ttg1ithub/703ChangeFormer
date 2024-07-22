@@ -13,7 +13,7 @@ class DataConfig:
             self.root_dir = '/mnt/backup/gcw-yhj/ChangeFormer/yhj-dataset/CDData/DSIFN_256'
         elif data_name == 'WHU':
             self.label_transform = "norm"
-            self.root_dir = '/media/lidan/ssd2/CDData/WHU-CD-256/'
+            self.root_dir = '/mnt/backup/gcw-yhj/ChangeFormer/yhj-dataset/CDData/WHU-CD-256'
         elif data_name == 'CDD':
             self.label_transform = "norm"
             self.root_dir = '/mnt/backup/gcw-yhj/ChangeFormer/yhj-dataset/CDData/CDD_256'

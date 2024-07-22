@@ -23,7 +23,7 @@ def main():
     # data
     parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--dataset', default='CDDataset', type=str)
-    parser.add_argument('--data_name', default='CDD', type=str)
+    parser.add_argument('--data_name', default='WHU', type=str)
 
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--split', default="test", type=str)
