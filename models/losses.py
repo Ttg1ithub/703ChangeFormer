@@ -6,6 +6,69 @@ import torch.nn as nn
 import torch
 import torch.nn.functional as F
 
+# def include_unknown(mask, gts):
+#         '''
+#         mask: [B, HW, HW]
+#         gts: [B, HW]
+#         '''
+#         mask = mask.transpose(1,2).contiguous()
+#         mask[gts>254,:] = True
+#         mask = mask.transpose(1,2).contiguous()
+
+#         return mask
+
+# def get_content_extension_loss(feats_s, feats_sw, gts):
+
+#     B, C, H, W = feats_s.shape # feat feature size (B X C X H X W)
+
+#     # uniform sampling with a size of 64 x 64 for source and wild-stylized source feature maps
+#     H_W_resize = 64
+#     HW = H_W_resize * H_W_resize
+    
+#     upsample_n = nn.Upsample(size=[H_W_resize, H_W_resize], mode='nearest')
+#     feats_s_flat = upsample_n(feats_s)
+#     feats_sw_flat = upsample_n(feats_sw)
+
+#     feats_s_flat = feats_s_flat.contiguous().view(B, C, -1) # B X C X H X W > B X C X (H X W)
+#     feats_sw_flat = feats_sw_flat.contiguous().view(B, C, -1) # B X C X H X W > B X C X (H X W)
+#     gts_flat = upsample_n(gts.unsqueeze(1).float()).squeeze(1).long().view(B, HW)
+
+#     # uniform sampling with a size of 16 x 16 for wild feature map
+#     H_W_resize_w = 16
+
+#     # normalize feature of each pixel
+#     feats_s_flat = nn.functional.normalize(feats_s_flat, p=2, dim=1)
+#     feats_sw_flat = nn.functional.normalize(feats_sw_flat, p=2, dim=1)
+
+#     # log(dot(feats_s_flat, feats_sw_flat))
+#     T = 0.07
+#     logits_sce = torch.bmm(feats_s_flat.transpose(1,2), feats_sw_flat) # dot product: B X (H X W) X (H X W)
+#     logits_sce = (torch.clamp(logits_sce, min=-1, max=1))/T
+    
+#     # compute ignore mask: same-class (excluding self) + unknown-labeled pixels
+#     # compute positive mask (same-class)
+#     logits_mask_sce_ignore = torch.eq(gts_flat.unsqueeze(2), gts_flat.unsqueeze(1)) # pos:1, neg:0. B X (H X W) X (H X W)
+#     # include unknown-labeled pixel
+#     logits_mask_sce_ignore = include_unknown(logits_mask_sce_ignore, gts_flat)
+
+#     # exclude self-pixel
+#     logits_mask_sce_ignore *= ~torch.eye(HW,HW).type(torch.cuda.BoolTensor).unsqueeze(0).expand([B, -1, -1]) # self:1, other:0. B X (H X W) X (H X W)
+
+#     # compute positive mask for cross entropy loss: B X (H X W)
+#     logits_mask_sce_pos = torch.linspace(start=0, end=HW-1, steps=HW).unsqueeze(0).expand([B, -1]).type(torch.cuda.LongTensor)
+
+#     # compute unknown-labeled mask for cross entropy loss: B X (H X W)
+#     logits_mask_sce_unk = torch.zeros_like(logits_mask_sce_pos, dtype=torch.bool)
+#     logits_mask_sce_unk[gts_flat>254] = True
+
+#     # compute loss_sce
+#     eps = 1e-5
+#     logits_sce[logits_mask_sce_ignore] = -1/T
+#     CELoss = nn.CrossEntropyLoss(reduction='none')
+#     loss_sce = CELoss(logits_sce.transpose(1,2), logits_mask_sce_pos)
+#     loss_sce = ((loss_sce * (~logits_mask_sce_unk)).sum(1) / ((~logits_mask_sce_unk).sum(1) + eps)).mean()
+#     return loss_sce
+
 def kl_divergence(pred1, pred2, weight=None):
     # Flatten predictions to (B * H * W, C)
     pred1 = pred1.view(pred1.size(0), pred1.size(1), -1)  # (B, C, H*W)

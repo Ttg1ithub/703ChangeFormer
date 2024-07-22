@@ -443,6 +443,8 @@ class BASE_Transformer(ResNet):
             x2, x2_sw = self.forward_single(x2,imgs_wild[1])
         outputs = []
         if imgs_wild is not None:
+            outputs.extend([self._forward_next(x1, x1_sw),
+                            self._forward_next(x2, x2_sw)])
             outputs.append(self._forward_next(x1_sw,x2_sw))
         outputs.append(self._forward_next(x1,x2))
         return outputs

@@ -296,7 +296,7 @@ class CDTrainer():
             self.G_final_pred = self.G_final_pred/len(self.G_pred)
         else:
             self.G_final_pred = self.G_pred[-1]
-      
+
     def _backward_G(self):
         gt = self.batch['L'].to(self.device).float()
         tmp_w = torch.tensor([0.5,5]).to(self.device)
@@ -318,6 +318,9 @@ class CDTrainer():
                 self.G_loss_all=None
             self.G_sw_loss = self._pxl_loss(self.G_pred[-2], gt, weight=tmp_w) \
                         +kl_divergence(self.G_pred[-2],self.G_pred[-1],weight=tmp_w)
+            tmp_gt = torch.zeros_like(gt)
+            self.G_sw_loss += self._pxl_loss(self.G_pred[0], tmp_gt, weight=tmp_w)
+            self.G_sw_loss += self._pxl_loss(self.G_pred[1], tmp_gt, weight=tmp_w)
             self.G_loss_all = self.G_loss + self.G_sw_loss
             self.G_loss_all.backward()
         else: 
