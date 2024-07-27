@@ -9,7 +9,7 @@ import torch
 import torch.optim as optim
 import numpy as np
 from misc.metric_tool import ConfuseMatrixMeter
-from models.losses import cross_entropy, kl_divergence
+from models.losses import cross_entropy, kl_divergence, alignloss
 import models.losses as losses
 from models.losses import get_alpha, softmax_helper, FocalLoss, mIoULoss, mmIoULoss
 
@@ -316,11 +316,12 @@ class CDTrainer():
         if self.use_wild:
             if not hasattr(self,'G_loss_all'):
                 self.G_loss_all=None
-            self.G_sw_loss = self._pxl_loss(self.G_pred[-2], gt, weight=tmp_w) \
-                        +kl_divergence(self.G_pred[-2],self.G_pred[-1],weight=tmp_w)
+            self.G_sw_loss = self._pxl_loss(self.G_pred[2], gt, weight=tmp_w) \
+                        +kl_divergence(self.G_pred[2],self.G_pred[-1],weight=tmp_w)
             tmp_gt = torch.zeros_like(gt)
             self.G_sw_loss += self._pxl_loss(self.G_pred[0], tmp_gt, weight=tmp_w)
             self.G_sw_loss += self._pxl_loss(self.G_pred[1], tmp_gt, weight=tmp_w)
+            self.G_sw_loss += alignloss(self.G_pred[-2],self.G_pred[-3],gt)
             self.G_loss_all = self.G_loss + self.G_sw_loss
             self.G_loss_all.backward()
         else: 

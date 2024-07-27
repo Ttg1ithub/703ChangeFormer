@@ -15,7 +15,7 @@ def main():
     # ------------
     parser = ArgumentParser()
     parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-    parser.add_argument('--project_name', default='Adain_CEL', type=str)
+    parser.add_argument('--project_name', default='Align_WHU_0.1_on', type=str)
     parser.add_argument('--print_models', default=False, type=bool, help='print models')
     parser.add_argument('--checkpoints_root', default='/mnt/backup/gcw-yhj/ChangeFormer/checkpoints', type=str)
     parser.add_argument('--vis_root', default='/mnt/backup/gcw-yhj/ChangeFormer/vis', type=str)
@@ -23,7 +23,7 @@ def main():
     # data
     parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--dataset', default='CDDataset', type=str)
-    parser.add_argument('--data_name', default='WHU', type=str)
+    parser.add_argument('--data_name', default='LEVIR', type=str)
 
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--split', default="test", type=str)
@@ -36,7 +36,7 @@ def main():
     parser.add_argument('--net_G', default='base_transformer_pos_s4_dd8', type=str,
                         help='base_resnet18 | base_transformer_pos_s4_dd8 | base_transformer_pos_s4_dd8_dedim8|')
 
-    parser.add_argument('--checkpoint_name', default='last_ckpt.pt', type=str)
+    parser.add_argument('--checkpoint_name', default='best_ckpt.pt', type=str)
 
     args = parser.parse_args()
     utils.get_device(args)

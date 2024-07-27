@@ -259,12 +259,14 @@ class ResNet(torch.nn.Module):
         x_4 = self.resnet.layer1(x) # 1/4, in=64, out=64
         return x_4
 
-    def _res_next(self, x_8):
+    def _res_next(self, x_8, x_ls:list=None):
         if self.resnet_stages_num > 3:
             x_8 = self.resnet.layer3(x_8) # 1/8, in=128, out=256
+            x_ls.append(x_8)
 
         if self.resnet_stages_num == 5:
             x_8 = self.resnet.layer4(x_8) # 1/32, in=256, out=512
+            x_ls.append(x_8)
         elif self.resnet_stages_num > 5:
             raise NotImplementedError
 
@@ -276,31 +278,32 @@ class ResNet(torch.nn.Module):
         x = self.conv_pred(x)
         return x
     
-    def forward_single(self, x, xw=None):
+    def forward_single(self, x, xw=None, x_ls:list=None, xw_ls:list=None):
         # resnet layers
         x = self.resnet.conv1(x)
         if xw is not None:
             xw = self.resnet.conv1(xw)
             x_sw = self.adain(x,xw)
-        # x = self.resnet.bn1(x)
-        # x = self.resnet.relu(x)
-        # x = self.resnet.maxpool(x)
+        
         x_4 = self._res_first(x)
-        # x_4 = self.resnet.layer1(x) # 1/4, in=64, out=64
+        x_ls.append(x_4)
         if xw is not None:
             x_sw = self._res_first(x_sw)
             xw = self._res_first(xw)
             x_sw = self.adain(x_sw, xw)
+            xw_ls.append(x_sw)
         x_8 = self.resnet.layer2(x_4) # 1/8, in=64, out=128
+        x_ls.append(x_8)
         if xw is not None:
             x_sw = self.resnet.layer2(x_sw)
             xw = self.resnet.layer2(xw)
             x_sw = self.adain(x_sw, xw)
-        x = self._res_next(x_8)
+            xw_ls.append(x_sw)
+        x = self._res_next(x_8, x_ls)
         if xw is None:
             x_sw = torch.tensor([-1.0])
         else:
-            x_sw = self._res_next(x_sw)
+            x_sw = self._res_next(x_sw, xw_ls)
         return x, x_sw
 
 class BASE_Transformer(ResNet):
@@ -426,12 +429,14 @@ class BASE_Transformer(ResNet):
         x = torch.abs(x1 - x2)
         if not self.if_upsample_2x:
             x = self.upsamplex2(x)
+        x1 = self.upsamplex4(x1)
+        x2 = self.upsamplex4(x2)
         x = self.upsamplex4(x)
         # forward small cnn
         x = self.classifier(x)
         if self.output_sigmoid:
             x = self.sigmoid(x)
-        return x
+        return x, x1, x2
     
     def forward(self, x1, x2, imgs_wild=None):
         # forward backbone resnet
@@ -443,10 +448,29 @@ class BASE_Transformer(ResNet):
             x2, x2_sw = self.forward_single(x2,imgs_wild[1])
         outputs = []
         if imgs_wild is not None:
-            outputs.extend([self._forward_next(x1, x1_sw),
-                            self._forward_next(x2, x2_sw)])
-            outputs.append(self._forward_next(x1_sw,x2_sw))
-        outputs.append(self._forward_next(x1,x2))
+            outputs.extend([self._forward_next(x1, x1_sw)[0],
+                            self._forward_next(x2, x2_sw)[0]])
+            outputs.append(self._forward_next(x1_sw,x2_sw)[0])
+        ans, z1, z2 = self._forward_next(x1,x2)
+        outputs.extend([z1, z2, ans])
         return outputs
 
+class T3SAW(ResNet):   
+    '''
+    Timporary Symmetry Siamese Swap + Adain
+    '''    
+    def __init__(self, input_nc, output_nc, resnet_stages_num=5, backbone='resnet50', output_sigmoid=False, if_upsample_2x=True):
+        super().__init__(input_nc, output_nc, resnet_stages_num, backbone, output_sigmoid, if_upsample_2x)
 
+    def forward(self, x1, x2, imgs_wild=None):
+        # forward backbone resnet
+        x_ls, xw_ls = [[], []], [[], []]
+        if imgs_wild is None:
+            x1, x1_sw = self.forward_single(x1, x_ls=x_ls[0])
+            x2, x2_sw = self.forward_single(x2, x_ls=x_ls[1])
+        else:
+            x1, x1_sw = self.forward_single(x1,imgs_wild[0], x_ls[0], xw_ls[0])
+            x2, x2_sw = self.forward_single(x2,imgs_wild[1], x_ls[0], xw_ls[1])
+        outputs = []
+        
+        return outputs
