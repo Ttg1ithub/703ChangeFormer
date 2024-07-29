@@ -494,15 +494,16 @@ class T3SAW(ResNet):
             x1w_ls, x2w_ls  = self.PCM(x1w_ls), self.PCM(x2w_ls)
             x1w_ls, x2w_ls  = self.encoder(x1w_ls), self.encoder(x2w_ls)
             x1w_ls, x2w_ls  = self.decoder(x1w_ls,x2w_ls)
-        x1_res, x2_res = self.PCM(x1_ls), self.PCM(x2_ls)
+        # x1_cont, x2_cont = self.PCM(x1_ls), self.PCM(x2_ls)
         x1_trans, x2_trans  = self.encoder(x1_ls), self.encoder(x2_ls)
-        output_res = self.decoder1(x1_res, x2_res)[-1]
-        output_trans = self.decoder2(x1_trans,x2_trans)[-1]
-        B, C, H, W = output_res.shape
-        output = torch.zeros(B, 2*C, H, W).to('cuda')
-        output[:, 0::2, :, :] = output_res
-        output[:, 1::2, :, :] = output_trans
-        output = self.fuse(output)
-        output = F.softmax(input=output, dim=1)
-        outputs = [output]
+        outputs = self.decoder(x1_trans, x2_trans)
+        # output_res = self.decoder(x1_res, x2_res)[-1]
+        # output_trans = self.decoder2(x1_trans,x2_trans)[-1]
+        # B, C, H, W = output_res.shape
+        # output = torch.zeros(B, 2*C, H, W).to('cuda')
+        # output[:, 0::2, :, :] = output_res
+        # output[:, 1::2, :, :] = output_trans
+        # output = self.fuse(output)
+        # output = F.softmax(input=output, dim=1)
+        # outputs = [output]
         return outputs

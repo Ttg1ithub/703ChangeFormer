@@ -315,6 +315,12 @@ class DecoderT3(nn.Module):
             nn.BatchNorm2d(self.embedding_dim)
         )
 
+        self.linear_fuse2 = nn.Sequential(
+            nn.Conv2d(   in_channels=self.embedding_dim*len(in_channels), out_channels=self.embedding_dim,
+                                        kernel_size=1),
+            nn.BatchNorm2d(self.embedding_dim)
+        )
+
         #Final predction head
         self.convd2x    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
         # self.dense_2x   = nn.Sequential( ResidualBlock(self.embedding_dim))
@@ -368,43 +374,54 @@ class DecoderT3(nn.Module):
         _c4_1 = self.linear_c4(c4_1).permute(0,2,1).reshape(n, -1, c4_1.shape[2], c4_1.shape[3])
         _c4_2 = self.linear_c4(c4_2).permute(0,2,1).reshape(n, -1, c4_2.shape[2], c4_2.shape[3])
         _c4   = self.diff_c4(torch.cat((_c4_1, _c4_2), dim=1))
+        _c4_abs = torch.abs(_c4_1-_c4_2)
         _c4_r   = self.diff_c4(torch.cat((_c4_2, _c4_1), dim=1))
         # p_c4  = self.make_pred_c4(_c4)
         # outputs.append(p_c4)
         _c4_up= resize(_c4, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
+        _c4_abs_up = resize(_c4_abs, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
         _c4_r_up= resize(_c4_r, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
 
         # Stage 3: x1/16 scale
         _c3_1 = self.linear_c3(c3_1).permute(0,2,1).reshape(n, -1, c3_1.shape[2], c3_1.shape[3])
         _c3_2 = self.linear_c3(c3_2).permute(0,2,1).reshape(n, -1, c3_2.shape[2], c3_2.shape[3])
         _c3   = self.diff_c3(torch.cat((_c3_1, _c3_2), dim=1)) + F.interpolate(_c4, scale_factor=2, mode="bilinear")
+        _c3_abs = torch.abs(_c3_1-_c3_2) + F.interpolate(_c4_abs, scale_factor=2, mode="bilinear")
         _c3_r   = self.diff_c3(torch.cat((_c3_2, _c3_1), dim=1)) + F.interpolate(_c4_r, scale_factor=2, mode="bilinear")
         # p_c3  = self.make_pred_c3(_c3)
         # outputs.append(p_c3)
         _c3_up= resize(_c3, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
+        _c3_abs_up = resize(_c3_abs, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
         _c3_r_up= resize(_c3_r, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
 
         # Stage 2: x1/8 scale
         _c2_1 = self.linear_c2(c2_1).permute(0,2,1).reshape(n, -1, c2_1.shape[2], c2_1.shape[3])
         _c2_2 = self.linear_c2(c2_2).permute(0,2,1).reshape(n, -1, c2_2.shape[2], c2_2.shape[3])
         _c2   = self.diff_c2(torch.cat((_c2_1, _c2_2), dim=1)) + F.interpolate(_c3, scale_factor=2, mode="bilinear")
+        _c2_abs = torch.abs(_c2_1-_c2_2) + F.interpolate(_c3_abs, scale_factor=2, mode="bilinear")
         _c2_r   = self.diff_c2(torch.cat((_c2_2, _c2_1), dim=1)) + F.interpolate(_c3_r, scale_factor=2, mode="bilinear")
         # p_c2  = self.make_pred_c2(_c2)
         # outputs.append(p_c2)
         _c2_up= resize(_c2, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
+        _c2_abs_up = resize(_c2_abs, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
         _c2_r_up= resize(_c2_r, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
 
         # Stage 1: x1/4 scale
         _c1_1 = self.linear_c1(c1_1).permute(0,2,1).reshape(n, -1, c1_1.shape[2], c1_1.shape[3])
         _c1_2 = self.linear_c1(c1_2).permute(0,2,1).reshape(n, -1, c1_2.shape[2], c1_2.shape[3])
         _c1   = self.diff_c1(torch.cat((_c1_1, _c1_2), dim=1)) + F.interpolate(_c2, scale_factor=2, mode="bilinear")
+        _c1_abs = torch.abs(_c1_1-_c1_2) + F.interpolate(_c2_abs, scale_factor=2, mode="bilinear")
         _c1_r   = self.diff_c1(torch.cat((_c1_2, _c1_1), dim=1)) + F.interpolate(_c2_r, scale_factor=2, mode="bilinear")
         # p_c1  = self.make_pred_c1(_c1)
         # outputs.append(p_c1)
 
         #Linear Fusion of difference image from all scales
         _c = self.linear_fuse(torch.cat((_c4_up, _c3_up, _c2_up, _c1), dim=1))
+        _c_abs = self.linear_fuse2(torch.cat((_c4_abs_up, _c3_abs_up, _c2_abs_up, _c1_abs), dim=1))
         _cr = self.linear_fuse(torch.cat((_c4_r_up, _c3_r_up, _c2_r_up, _c1_r), dim=1))
+
+        _c =_c + _c_abs
+        _cr = _cr + _c_abs
         # #Dropout
         # if dropout_ratio > 0:
         #     self.dropout = nn.Dropout2d(dropout_ratio)

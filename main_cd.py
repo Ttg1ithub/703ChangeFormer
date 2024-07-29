@@ -37,7 +37,6 @@ if __name__ == '__main__':
 
     # data
     parser.add_argument('--num_workers', default=4, type=int)
-    parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--dataset', default='CDDataset', type=str)
     parser.add_argument('--data_name', default='LEVIR', type=str)
     parser.add_argument('--WildData_name', default='CDD', type=str)
