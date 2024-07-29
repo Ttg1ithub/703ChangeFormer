@@ -134,7 +134,7 @@ def define_G(args, init_type='normal', init_gain=0.02, gpu_ids=[]):
         net = ResNet(input_nc=3, output_nc=2, output_sigmoid=False)
 
     elif args.net_G == 'T3SAW':
-        net = T3SAW(input_nc=3, output_nc=2)
+        net = T3SAW(input_nc=3, output_nc=2, embed_dim=args.embed_dim)
 
     elif args.net_G == 'base_transformer_pos_s4':
         net = BASE_Transformer(input_nc=3, output_nc=2, token_len=4, resnet_stages_num=4,
@@ -464,10 +464,10 @@ class T3SAW(ResNet):
     '''
     Timporary Symmetry Siamese Swap + Adain Wild
     '''    
-    def __init__(self, input_nc, output_nc, resnet_stages_num=5, backbone='resnet18', output_sigmoid=False, if_upsample_2x=True):
+    def __init__(self, input_nc, output_nc, embed_dim, resnet_stages_num=5, backbone='resnet18', output_sigmoid=False, if_upsample_2x=True):
         super().__init__(input_nc, output_nc, resnet_stages_num, backbone, output_sigmoid, if_upsample_2x)
         self.embed_dims = [64,128,256,512]
-        self.PCM = T3.PCM(self.embed_dims, s=1)
+        self.PCM = T3.PCM(self.embed_dims, iter=1)
 
         self.depths = [3, 6, 16, 3] #[3, 3, 6, 18, 3]
         self.drop_rate = 0.0
@@ -477,7 +477,7 @@ class T3SAW(ResNet):
                  attn_drop_rate = self.attn_drop, drop_path_rate=self.drop_path_rate, norm_layer=partial(nn.LayerNorm, eps=1e-6),
                  depths=self.depths, sr_ratios=[8, 4, 2, 1])
         
-        self.embedding_dim = 256
+        self.embedding_dim = embed_dim
         self.decoder = T3.DecoderT3(input_transform='multiple_select', in_index=[0, 1, 2, 3], align_corners=False, 
                     in_channels = self.embed_dims, embedding_dim= self.embedding_dim, output_nc=output_nc, 
                     decoder_softmax = False, feature_strides=[2, 4, 8, 16])

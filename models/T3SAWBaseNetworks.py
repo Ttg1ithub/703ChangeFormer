@@ -3,6 +3,13 @@ import torch.nn as nn
 import torch.nn.functional as F
 from models.ChangeFormer import *
 
+def conv_diff(in_channels, out_channels):
+    return nn.Sequential(
+        nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+        nn.ReLU(),
+        nn.BatchNorm2d(out_channels),
+    )
+
 # 空洞卷积
 class ASPPConv(nn.Sequential):
     def __init__(self, in_channels, out_channels, dilation):
@@ -69,50 +76,67 @@ class PCM(nn.Module):
     pyramid context module
 
     """
-    def __init__(self, in_channels:list,  s:int=3) -> None:
+    def __init__(self, in_channels:list, dilations:list=None,iter:int=3) -> None:
         super().__init__()
-        self.net = [[],[],[],[]]
-        for i, in_channel in enumerate(in_channels):
-            for j in range(i+1, 4):
-                seq = nn.Sequential(
-                    ASPP(in_channels[j], [2,3,5,7], in_channel),
-                    nn.Upsample(scale_factor=2**(j-i), mode='bilinear')
-                )
-                self.net[i].append(seq)
-            self.net[i].append(
-                nn.Sequential(
-                    nn.Conv2d((4-i)*in_channel, in_channel, 1, bias=False),
-                    nn.BatchNorm2d(in_channel),
+        self.in_channels = in_channels
+        self.dilations = dilations or [2,3]
+        self.iter = iter
+        self.swapx1 = self._make_swaplayer(0)
+        self.swapx2 = self._make_swaplayer(1)
+        self.swapx3 = self._make_swaplayer(2)
+        self.fusex1 = self._make_fuse(0)
+        self.fusex2 = self._make_fuse(1)
+        self.fusex3 = self._make_fuse(2)
+
+    def _make_fuse(self, i:int)->nn.Sequential:
+        out_channel = self.in_channels[i]
+        return nn.Sequential(
+                    nn.Conv2d((4-i)*out_channel, out_channel, 1, bias=False),
+                    nn.BatchNorm2d(out_channel),
                     nn.ReLU(),
                     nn.Dropout(0.5))
-            )
-            self.net[i] = nn.ModuleList(self.net[i])
-            assert len(self.net[i])==4-i,"PCM架构出错"
-        self.net = nn.ModuleList(self.net)
-        
-        
-    def forward(self, context=None):
-        if context is None:
-            context = []
 
-        assert len(context) == len(self.net), "ASPP网络架构和输入上下文不匹配"
+    def _make_swaplayer(self, i:int)->nn.ModuleList:
+        swap = []
+        out_channel = self.in_channels[i]
+        assert 0<=i<3,"索引i超出范围0~2"
+        for j in range(i+1,4):
+            seq = nn.Sequential(
+                        ASPP(self.in_channels[j], self.dilations, out_channel),
+                        nn.Upsample(scale_factor=2**(j-i), mode='bilinear')
+                    )
+            swap.append(seq)
+        assert len(swap) == 3-i,"swaplayer构建出错"
+        return nn.ModuleList(swap)   
 
-        updated_context = []
+    def tensors_equal(self, tensor_list1, tensor_list2):
+        if len(tensor_list1) != len(tensor_list2):
+            return False
+        for t1, t2 in zip(tensor_list1, tensor_list2):
+            if not torch.equal(t1, t2):
+                return False
+        return True
 
-        for i, cont in enumerate(context):
-            y = [cont]
-            for j in range(i + 1, 4):
-                y.append(self.net[i][j-1-i](context[j]))
-            y = torch.cat(y, dim=1)
-            
-            updated_cont = self.net[i][-1](y)
-            updated_context.append(updated_cont)
+    def forward(self, context:list)->list:
+        out_context = [item for item in context]
 
-        return updated_context
+        for k in range(self.iter):
+            out_context[2] = torch.cat([out_context[2], self.swapx3[0](out_context[3])], dim=1)
+            out_context[2] = self.fusex3(out_context[2])
+
+            out_context[1] = torch.cat([out_context[1], self.swapx2[0](out_context[2]), self.swapx2[1](out_context[3])], dim=1)
+            out_context[1] = self.fusex2(out_context[1])
+
+            out_context[0] = torch.cat([out_context[0], self.swapx1[0](out_context[1]), 
+                                    self.swapx1[1](out_context[2]), self.swapx1[2](out_context[3])], dim=1)
+            out_context[0] = self.fusex1(out_context[0])
+
+        # assert not self.tensors_equal(out_context, context), "swap失效"
+        return out_context
      
 #Transormer Ecoder with x2, x4, x8, x16 scales
 class EncoderT3(nn.Module):
-    def __init__(self, img_size=256, patch_size=3, in_chans=3, num_classes=2, embed_dims=[32, 64, 128, 256],
+    def __init__(self, num_classes=2, embed_dims=[32, 64, 128, 256],
                  num_heads=[2, 2, 4, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=True, qk_scale=None, drop_rate=0.,
                  attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm,
                  depths=[3, 3, 6, 18], sr_ratios=[8, 4, 2, 1]):
@@ -279,10 +303,10 @@ class DecoderT3(nn.Module):
         self.diff_c1   = conv_diff(in_channels=2*self.embedding_dim, out_channels=self.embedding_dim)
 
         #taking outputs from middle of the encoder
-        self.make_pred_c4 = make_prediction(in_channels=self.embedding_dim, out_channels=self.output_nc)
-        self.make_pred_c3 = make_prediction(in_channels=self.embedding_dim, out_channels=self.output_nc)
-        self.make_pred_c2 = make_prediction(in_channels=self.embedding_dim, out_channels=self.output_nc)
-        self.make_pred_c1 = make_prediction(in_channels=self.embedding_dim, out_channels=self.output_nc)
+        # self.make_pred_c4 = make_prediction(in_channels=self.embedding_dim, out_channels=self.output_nc)
+        # self.make_pred_c3 = make_prediction(in_channels=self.embedding_dim, out_channels=self.output_nc)
+        # self.make_pred_c2 = make_prediction(in_channels=self.embedding_dim, out_channels=self.output_nc)
+        # self.make_pred_c1 = make_prediction(in_channels=self.embedding_dim, out_channels=self.output_nc)
 
         #Final linear fusion layer
         self.linear_fuse = nn.Sequential(
@@ -293,9 +317,9 @@ class DecoderT3(nn.Module):
 
         #Final predction head
         self.convd2x    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
-        self.dense_2x   = nn.Sequential( ResidualBlock(self.embedding_dim))
+        # self.dense_2x   = nn.Sequential( ResidualBlock(self.embedding_dim))
         self.convd1x    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
-        self.dense_1x   = nn.Sequential( ResidualBlock(self.embedding_dim))
+        # self.dense_1x   = nn.Sequential( ResidualBlock(self.embedding_dim))
         self.change_probability = ConvLayer(self.embedding_dim, self.output_nc, kernel_size=3, stride=1, padding=1)
         
         #Final activation
@@ -390,11 +414,11 @@ class DecoderT3(nn.Module):
         #Upsampling x2 (x1/2 scale)
         x, xr = self.convd2x(_c), self.convd2x(_cr)
         #Residual block
-        x, xr = self.dense_2x(x), self.dense_2x(xr)
+        # x, xr = self.dense_2x(x), self.dense_2x(xr)
         #Upsampling x2 (x1 scale)
         x, xr = self.convd1x(x), self.convd1x(xr)
         #Residual block
-        x, xr = self.dense_1x(x), self.dense_1x(xr)
+        # x, xr = self.dense_1x(x), self.dense_1x(xr)
 
         #Final prediction
         cp = 0.5*self.change_probability(x) + 0.5*self.change_probability(xr)
