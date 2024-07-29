@@ -3,12 +3,14 @@ import torch.nn as nn
 from torch.nn import init
 import torch.nn.functional as F
 from torch.optim import lr_scheduler
+from functools import partial
 
 import functools
 from einops import rearrange
 
 import models
 from models.help_funcs import Transformer, TransformerDecoder, TwoLayerConv2d
+import models.T3SAWBaseNetworks as T3
 from models.ChangeFormer import ChangeFormerV1, ChangeFormerV2, ChangeFormerV3, ChangeFormerV4, ChangeFormerV5, ChangeFormerV6
 from models.SiamUnet_diff import SiamUnet_diff
 from models.SiamUnet_conc import SiamUnet_conc
@@ -131,6 +133,9 @@ def define_G(args, init_type='normal', init_gain=0.02, gpu_ids=[]):
     if args.net_G == 'base_resnet18':
         net = ResNet(input_nc=3, output_nc=2, output_sigmoid=False)
 
+    elif args.net_G == 'T3SAW':
+        net = T3SAW(input_nc=3, output_nc=2)
+
     elif args.net_G == 'base_transformer_pos_s4':
         net = BASE_Transformer(input_nc=3, output_nc=2, token_len=4, resnet_stages_num=4,
                              with_pos='learned')
@@ -204,13 +209,13 @@ class ResNet(torch.nn.Module):
         expand = 1
         if backbone == 'resnet18':
             self.resnet = models.resnet18(pretrained=True,
-                                          replace_stride_with_dilation=[False,True,True])
+                                          replace_stride_with_dilation=[False,False,False])
         elif backbone == 'resnet34':
             self.resnet = models.resnet34(pretrained=True,
                                           replace_stride_with_dilation=[False,True,True])
         elif backbone == 'resnet50':
             self.resnet = models.resnet50(pretrained=True,
-                                          replace_stride_with_dilation=[False,True,True])
+                                          replace_stride_with_dilation=[False,False,False])
             expand = 4
         else:
             raise NotImplementedError
@@ -252,14 +257,14 @@ class ResNet(torch.nn.Module):
             x = self.sigmoid(x)
         return x
 
-    def _res_first(self, x):
+    def _single_first(self, x):
         x = self.resnet.bn1(x)
         x = self.resnet.relu(x)
         x = self.resnet.maxpool(x)
         x_4 = self.resnet.layer1(x) # 1/4, in=64, out=64
         return x_4
 
-    def _res_next(self, x_8, x_ls:list=None):
+    def _single_next(self, x_8, x_ls:list=[]):
         if self.resnet_stages_num > 3:
             x_8 = self.resnet.layer3(x_8) # 1/8, in=128, out=256
             x_ls.append(x_8)
@@ -278,18 +283,18 @@ class ResNet(torch.nn.Module):
         x = self.conv_pred(x)
         return x
     
-    def forward_single(self, x, xw=None, x_ls:list=None, xw_ls:list=None):
+    def forward_single(self, x, xw=None, x_ls:list=[], xw_ls:list=[]):
         # resnet layers
         x = self.resnet.conv1(x)
         if xw is not None:
             xw = self.resnet.conv1(xw)
             x_sw = self.adain(x,xw)
         
-        x_4 = self._res_first(x)
+        x_4 = self._single_first(x)
         x_ls.append(x_4)
         if xw is not None:
-            x_sw = self._res_first(x_sw)
-            xw = self._res_first(xw)
+            x_sw = self._single_first(x_sw)
+            xw = self._single_first(xw)
             x_sw = self.adain(x_sw, xw)
             xw_ls.append(x_sw)
         x_8 = self.resnet.layer2(x_4) # 1/8, in=64, out=128
@@ -299,11 +304,11 @@ class ResNet(torch.nn.Module):
             xw = self.resnet.layer2(xw)
             x_sw = self.adain(x_sw, xw)
             xw_ls.append(x_sw)
-        x = self._res_next(x_8, x_ls)
+        x = self._single_next(x_8, x_ls)
         if xw is None:
             x_sw = torch.tensor([-1.0])
         else:
-            x_sw = self._res_next(x_sw, xw_ls)
+            x_sw = self._single_next(x_sw, xw_ls)
         return x, x_sw
 
 class BASE_Transformer(ResNet):
@@ -457,20 +462,40 @@ class BASE_Transformer(ResNet):
 
 class T3SAW(ResNet):   
     '''
-    Timporary Symmetry Siamese Swap + Adain
+    Timporary Symmetry Siamese Swap + Adain Wild
     '''    
-    def __init__(self, input_nc, output_nc, resnet_stages_num=5, backbone='resnet50', output_sigmoid=False, if_upsample_2x=True):
+    def __init__(self, input_nc, output_nc, resnet_stages_num=5, backbone='resnet18', output_sigmoid=False, if_upsample_2x=True):
         super().__init__(input_nc, output_nc, resnet_stages_num, backbone, output_sigmoid, if_upsample_2x)
+        self.embed_dims = [64,128,256,512]
+        self.PCM = T3.PCM(self.embed_dims, s=1)
+
+        self.depths = [3, 6, 16, 3] #[3, 3, 6, 18, 3]
+        self.drop_rate = 0.0
+        self.attn_drop = 0.0
+        self.drop_path_rate = 0.1 
+        self.encoder = T3.EncoderT3(embed_dims=self.embed_dims, num_heads = [1, 2, 4, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=True, qk_scale=None, drop_rate=self.drop_rate,
+                 attn_drop_rate = self.attn_drop, drop_path_rate=self.drop_path_rate, norm_layer=partial(nn.LayerNorm, eps=1e-6),
+                 depths=self.depths, sr_ratios=[8, 4, 2, 1])
+        
+        self.embedding_dim = 256
+        self.decoder = T3.DecoderT3(input_transform='multiple_select', in_index=[0, 1, 2, 3], align_corners=False, 
+                    in_channels = self.embed_dims, embedding_dim= self.embedding_dim, output_nc=output_nc, 
+                    decoder_softmax = False, feature_strides=[2, 4, 8, 16])
 
     def forward(self, x1, x2, imgs_wild=None):
         # forward backbone resnet
-        x_ls, xw_ls = [[], []], [[], []]
+        x1_ls, x2_ls, x1w_ls, x2w_ls = [], [], [], []
         if imgs_wild is None:
-            x1, x1_sw = self.forward_single(x1, x_ls=x_ls[0])
-            x2, x2_sw = self.forward_single(x2, x_ls=x_ls[1])
+            x1, x1_sw = self.forward_single(x1, x_ls=x1_ls)
+            x2, x2_sw = self.forward_single(x2, x_ls=x2_ls)
         else:
-            x1, x1_sw = self.forward_single(x1,imgs_wild[0], x_ls[0], xw_ls[0])
-            x2, x2_sw = self.forward_single(x2,imgs_wild[1], x_ls[0], xw_ls[1])
-        outputs = []
+            x1, x1_sw = self.forward_single(x1,imgs_wild[0], x1_ls, x1w_ls)
+            x2, x2_sw = self.forward_single(x2,imgs_wild[1], x2_ls, x2w_ls)
+            x1w_ls, x2w_ls  = self.PCM(x1w_ls), self.PCM(x2w_ls)
+            x1w_ls, x2w_ls  = self.encoder(x1w_ls), self.encoder(x2w_ls)
+            x1w_ls, x2w_ls  = self.decoder(x1w_ls,x2w_ls)
+        x1_ls, x2_ls = self.PCM(x1_ls), self.PCM(x2_ls)
+        x1_ls, x2_ls  = self.encoder(x1_ls), self.encoder(x2_ls)
+        outputs  = self.decoder(x1_ls,x2_ls)
         
         return outputs

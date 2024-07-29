@@ -31,17 +31,17 @@ if __name__ == '__main__':
     # ------------
     parser = ArgumentParser()
     parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-    parser.add_argument('--project_name', default='Align_WHU_1_off', type=str)
+    parser.add_argument('--project_name', default='T3SAW_levir', type=str)
     parser.add_argument('--checkpoint_root', default='/mnt/backup/gcw-yhj/ChangeFormer/checkpoints', type=str)
     parser.add_argument('--vis_root', default='/mnt/backup/gcw-yhj/ChangeFormer/vis', type=str)  
 
     # data
-    parser.add_argument('--num_workers', default=4, type=int)
+    parser.add_argument('--num_workers', default=8, type=int)
     parser.add_argument('--dataset', default='CDDataset', type=str)
-    parser.add_argument('--data_name', default='WHU', type=str)
+    parser.add_argument('--data_name', default='LEVIR', type=str)
     parser.add_argument('--WildData_name', default='CDD', type=str)
 
-    parser.add_argument('--batch_size', default=16, type=int)
+    parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--split', default="train", type=str)
     parser.add_argument('--split_val', default="val", type=str)
 
@@ -49,7 +49,7 @@ if __name__ == '__main__':
     parser.add_argument('--shuffle_AB', default=False, type=str)
 
     # model
-    parser.add_argument('--use_wild', default=True, type=bool)
+    parser.add_argument('--use_wild', default=False, type=bool)
     parser.add_argument('--n_class', default=2, type=int)
     parser.add_argument('--embed_dim', default=64, type=int)
     parser.add_argument('--pretrain', default=None, type=str)
@@ -57,7 +57,7 @@ if __name__ == '__main__':
     parser.add_argument('--multi_scale_infer', default=False, type=str)
     parser.add_argument('--multi_pred_weights', nargs = '+', type = float, default = [0.5, 0.5, 0.5, 0.8, 1.0])
 
-    parser.add_argument('--net_G', default='base_transformer_pos_s4_dd8', type=str,
+    parser.add_argument('--net_G', default='T3SAW', type=str,
                         help='base_resnet18 | base_transformer_pos_s4 | '
                              'base_transformer_pos_s4_dd8 | '
                              'base_transformer_pos_s4_dd8_dedim8|ChangeFormerV5|SiamUnet_diff')
