@@ -30,8 +30,8 @@ if __name__ == '__main__':
     # args
     # ------------
     parser = ArgumentParser()
-    parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-    parser.add_argument('--project_name', default='test', type=str)
+    parser.add_argument('--gpu_ids', type=str, default='1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
+    parser.add_argument('--project_name', default='trans头交替拼接', type=str)
     parser.add_argument('--checkpoint_root', default='/mnt/backup/gcw-yhj/ChangeFormer/checkpoints', type=str)
     parser.add_argument('--vis_root', default='/mnt/backup/gcw-yhj/ChangeFormer/vis', type=str)  
 
@@ -41,7 +41,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_name', default='LEVIR', type=str)
     parser.add_argument('--WildData_name', default='CDD', type=str)
 
-    parser.add_argument('--batch_size', default=64, type=int)
+    parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--split', default="train", type=str)
     parser.add_argument('--split_val', default="val", type=str)
 

@@ -14,8 +14,8 @@ def main():
     # args
     # ------------
     parser = ArgumentParser()
-    parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-    parser.add_argument('--project_name', default='test', type=str)
+    parser.add_argument('--gpu_ids', type=str, default='0', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
+    parser.add_argument('--project_name', default='trans头交替拼接', type=str)
     parser.add_argument('--print_models', default=False, type=bool, help='print models')
     parser.add_argument('--checkpoints_root', default='/mnt/backup/gcw-yhj/ChangeFormer/checkpoints', type=str)
     parser.add_argument('--vis_root', default='/mnt/backup/gcw-yhj/ChangeFormer/vis', type=str)

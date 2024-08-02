@@ -2,10 +2,39 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from models.ChangeFormer import *
+ 
+def alternate_stack(tensor1, tensor2, dim):
+    # 确保两个张量的除了指定维度以外的形状相同
+    shape1 = tensor1.shape
+    shape2 = tensor2.shape
+    
+    if shape1[:dim] != shape2[:dim] or shape1[dim+1:] != shape2[dim+1:]:
+        raise ValueError("除了指定的维度，两个张量的形状必须相同")
+    
+    # 获取交替拼接后的新形状
+    new_shape = list(shape1)
+    new_shape[dim] *= 2  # 在指定维度上交替拼接，所以大小乘以2
+    
+    # 创建一个新的张量来存放交替拼接的结果
+    result = torch.cat((tensor1, tensor2), dim=dim)
+    
+    # 使用 slicing 进行交替拼接
+    slices = [slice(None)] * len(new_shape)
+    slices[dim] = slice(0, None, 2)
+    result[tuple(slices)] = tensor1
+    
+    slices[dim] = slice(1, None, 2)
+    result[tuple(slices)] = tensor2
+    # B, C, H, W = tensor1.shape
+    # result = torch.zeros(B, 2*C, H, W).to('cuda')
+    # result[:,0::2,:,:] = tensor1
+    # result[:,1::2,:,:] = tensor2
+    return result
 
-def conv_diff(in_channels, out_channels):
+def conv_diff(in_channels, out_channels, groups=None):
+    groups = groups or out_channels
     return nn.Sequential(
-        nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1),
+        nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, groups=groups),
         nn.ReLU(),
         nn.BatchNorm2d(out_channels),
     )
@@ -289,6 +318,7 @@ class DecoderT3(nn.Module):
         self.embedding_dim   = embedding_dim
         self.output_nc       = output_nc
         c1_in_channels, c2_in_channels, c3_in_channels, c4_in_channels = self.in_channels
+        self.Lambda = nn.Parameter(torch.randn(1))
 
         #MLP decoder heads
         self.linear_c4 = MLP(input_dim=c4_in_channels, embed_dim=self.embedding_dim)
@@ -323,14 +353,19 @@ class DecoderT3(nn.Module):
 
         #Final predction head
         self.convd2x    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
+        self.convd2x2    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
         # self.dense_2x   = nn.Sequential( ResidualBlock(self.embedding_dim))
         self.convd1x    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
+        self.convd1x2    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
         # self.dense_1x   = nn.Sequential( ResidualBlock(self.embedding_dim))
         self.change_probability = ConvLayer(self.embedding_dim, self.output_nc, kernel_size=3, stride=1, padding=1)
+        self.change_probability2 = ConvLayer(self.embedding_dim, self.output_nc, kernel_size=3, stride=1, padding=1)
+
         
         #Final activation
         self.output_softmax     = decoder_softmax
         self.active             = nn.Sigmoid() 
+        self.alternate_stack = alternate_stack
 
     def _transform_inputs(self, inputs):
         """Transform inputs for decoder.
@@ -373,9 +408,9 @@ class DecoderT3(nn.Module):
         # Stage 4: x1/32 scale
         _c4_1 = self.linear_c4(c4_1).permute(0,2,1).reshape(n, -1, c4_1.shape[2], c4_1.shape[3])
         _c4_2 = self.linear_c4(c4_2).permute(0,2,1).reshape(n, -1, c4_2.shape[2], c4_2.shape[3])
-        _c4   = self.diff_c4(torch.cat((_c4_1, _c4_2), dim=1))
+        _c4   = self.diff_c4(self.alternate_stack(_c4_1, _c4_2, dim=1))
         _c4_abs = torch.abs(_c4_1-_c4_2)
-        _c4_r   = self.diff_c4(torch.cat((_c4_2, _c4_1), dim=1))
+        _c4_r   = self.diff_c4(self.alternate_stack(_c4_2, _c4_1, dim=1))
         # p_c4  = self.make_pred_c4(_c4)
         # outputs.append(p_c4)
         _c4_up= resize(_c4, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
@@ -385,9 +420,9 @@ class DecoderT3(nn.Module):
         # Stage 3: x1/16 scale
         _c3_1 = self.linear_c3(c3_1).permute(0,2,1).reshape(n, -1, c3_1.shape[2], c3_1.shape[3])
         _c3_2 = self.linear_c3(c3_2).permute(0,2,1).reshape(n, -1, c3_2.shape[2], c3_2.shape[3])
-        _c3   = self.diff_c3(torch.cat((_c3_1, _c3_2), dim=1)) + F.interpolate(_c4, scale_factor=2, mode="bilinear")
+        _c3   = self.diff_c3(self.alternate_stack(_c3_1, _c3_2, dim=1)) + F.interpolate(_c4, scale_factor=2, mode="bilinear")
         _c3_abs = torch.abs(_c3_1-_c3_2) + F.interpolate(_c4_abs, scale_factor=2, mode="bilinear")
-        _c3_r   = self.diff_c3(torch.cat((_c3_2, _c3_1), dim=1)) + F.interpolate(_c4_r, scale_factor=2, mode="bilinear")
+        _c3_r   = self.diff_c3(self.alternate_stack(_c3_2, _c3_1, dim=1)) + F.interpolate(_c4_r, scale_factor=2, mode="bilinear")
         # p_c3  = self.make_pred_c3(_c3)
         # outputs.append(p_c3)
         _c3_up= resize(_c3, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
@@ -397,9 +432,9 @@ class DecoderT3(nn.Module):
         # Stage 2: x1/8 scale
         _c2_1 = self.linear_c2(c2_1).permute(0,2,1).reshape(n, -1, c2_1.shape[2], c2_1.shape[3])
         _c2_2 = self.linear_c2(c2_2).permute(0,2,1).reshape(n, -1, c2_2.shape[2], c2_2.shape[3])
-        _c2   = self.diff_c2(torch.cat((_c2_1, _c2_2), dim=1)) + F.interpolate(_c3, scale_factor=2, mode="bilinear")
+        _c2   = self.diff_c2(self.alternate_stack(_c2_1, _c2_2, dim=1)) + F.interpolate(_c3, scale_factor=2, mode="bilinear")
         _c2_abs = torch.abs(_c2_1-_c2_2) + F.interpolate(_c3_abs, scale_factor=2, mode="bilinear")
-        _c2_r   = self.diff_c2(torch.cat((_c2_2, _c2_1), dim=1)) + F.interpolate(_c3_r, scale_factor=2, mode="bilinear")
+        _c2_r   = self.diff_c2(self.alternate_stack(_c2_2, _c2_1, dim=1)) + F.interpolate(_c3_r, scale_factor=2, mode="bilinear")
         # p_c2  = self.make_pred_c2(_c2)
         # outputs.append(p_c2)
         _c2_up= resize(_c2, size=c1_2.size()[2:], mode='bilinear', align_corners=False)
@@ -409,9 +444,9 @@ class DecoderT3(nn.Module):
         # Stage 1: x1/4 scale
         _c1_1 = self.linear_c1(c1_1).permute(0,2,1).reshape(n, -1, c1_1.shape[2], c1_1.shape[3])
         _c1_2 = self.linear_c1(c1_2).permute(0,2,1).reshape(n, -1, c1_2.shape[2], c1_2.shape[3])
-        _c1   = self.diff_c1(torch.cat((_c1_1, _c1_2), dim=1)) + F.interpolate(_c2, scale_factor=2, mode="bilinear")
+        _c1   = self.diff_c1(self.alternate_stack(_c1_1, _c1_2, dim=1)) + F.interpolate(_c2, scale_factor=2, mode="bilinear")
         _c1_abs = torch.abs(_c1_1-_c1_2) + F.interpolate(_c2_abs, scale_factor=2, mode="bilinear")
-        _c1_r   = self.diff_c1(torch.cat((_c1_2, _c1_1), dim=1)) + F.interpolate(_c2_r, scale_factor=2, mode="bilinear")
+        _c1_r   = self.diff_c1(self.alternate_stack(_c1_2, _c1_1, dim=1)) + F.interpolate(_c2_r, scale_factor=2, mode="bilinear")
         # p_c1  = self.make_pred_c1(_c1)
         # outputs.append(p_c1)
 
@@ -420,8 +455,6 @@ class DecoderT3(nn.Module):
         _c_abs = self.linear_fuse2(torch.cat((_c4_abs_up, _c3_abs_up, _c2_abs_up, _c1_abs), dim=1))
         _cr = self.linear_fuse(torch.cat((_c4_r_up, _c3_r_up, _c2_r_up, _c1_r), dim=1))
 
-        _c =_c + _c_abs
-        _cr = _cr + _c_abs
         # #Dropout
         # if dropout_ratio > 0:
         #     self.dropout = nn.Dropout2d(dropout_ratio)
@@ -430,16 +463,18 @@ class DecoderT3(nn.Module):
 
         #Upsampling x2 (x1/2 scale)
         x, xr = self.convd2x(_c), self.convd2x(_cr)
+        x_abs = self.convd2x2(_c_abs)
         #Residual block
         # x, xr = self.dense_2x(x), self.dense_2x(xr)
         #Upsampling x2 (x1 scale)
         x, xr = self.convd1x(x), self.convd1x(xr)
+        x_abs = self.convd1x2(x_abs)
         #Residual block
         # x, xr = self.dense_1x(x), self.dense_1x(xr)
 
         #Final prediction
         cp = 0.5*self.change_probability(x) + 0.5*self.change_probability(xr)
-        
+        cp = self.Lambda*cp + self.change_probability2(x_abs)
         outputs.append(cp)
 
         if self.output_softmax:
