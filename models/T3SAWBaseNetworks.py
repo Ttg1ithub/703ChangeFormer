@@ -2,33 +2,14 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 from models.ChangeFormer import *
+from typing import List, Optional
  
 def alternate_stack(tensor1, tensor2, dim):
     # 确保两个张量的除了指定维度以外的形状相同
-    shape1 = tensor1.shape
-    shape2 = tensor2.shape
-    
-    if shape1[:dim] != shape2[:dim] or shape1[dim+1:] != shape2[dim+1:]:
-        raise ValueError("除了指定的维度，两个张量的形状必须相同")
-    
-    # 获取交替拼接后的新形状
-    new_shape = list(shape1)
-    new_shape[dim] *= 2  # 在指定维度上交替拼接，所以大小乘以2
-    
-    # 创建一个新的张量来存放交替拼接的结果
-    result = torch.cat((tensor1, tensor2), dim=dim)
-    
-    # 使用 slicing 进行交替拼接
-    slices = [slice(None)] * len(new_shape)
-    slices[dim] = slice(0, None, 2)
-    result[tuple(slices)] = tensor1
-    
-    slices[dim] = slice(1, None, 2)
-    result[tuple(slices)] = tensor2
-    # B, C, H, W = tensor1.shape
-    # result = torch.zeros(B, 2*C, H, W).to('cuda')
-    # result[:,0::2,:,:] = tensor1
-    # result[:,1::2,:,:] = tensor2
+    result = torch.stack([tensor1, tensor2],dim=dim+1)
+    shape = list(tensor1.shape)
+    shape[dim] *= 2
+    result = result.contiguous().view(*shape)
     return result
 
 def conv_diff(in_channels, out_channels, groups=None):
@@ -162,9 +143,114 @@ class PCM(nn.Module):
 
         # assert not self.tensors_equal(out_context, context), "swap失效"
         return out_context
-     
+################################################################
+class UpMask(nn.Module):
+    def __init__(
+        self,
+        scale_factor: float,
+        nin: int,
+        nout: int,
+    ):
+        super().__init__()
+        self._upsample = nn.Upsample(
+            scale_factor=scale_factor, mode="bilinear", align_corners=True
+        )
+        self._convolution = nn.Sequential(
+            nn.Conv2d(nin, nin, 3, 1, groups=nin, padding=1),
+            nn.PReLU(),
+            nn.InstanceNorm2d(nin),
+            nn.Conv2d(nin, nout, kernel_size=1, stride=1),
+            nn.PReLU(),
+            nn.InstanceNorm2d(nout),
+        )
+
+    def forward(self, x: torch.Tensor, y: Optional[torch.Tensor] = None) -> torch.Tensor:
+        x = self._upsample(x)
+        if y is not None:
+            x = x * y
+        return self._convolution(x)
+
+class PixelwiseLinear(nn.Module):
+    def __init__(
+        self,
+        fin: List[int],
+        fout: List[int],
+        last_activation: nn.Module = None,
+    ) -> None:
+        assert len(fout) == len(fin)
+        super().__init__()
+
+        n = len(fin)
+        self._linears = nn.Sequential(
+            *[
+                nn.Sequential(
+                    nn.Conv2d(fin[i], fout[i], kernel_size=1, bias=True),
+                    nn.PReLU()
+                    if i < n - 1 or last_activation is None
+                    else last_activation,
+                )
+                for i in range(n)
+            ]
+        )
+
+    def forward(self, x: torch.Tensor) -> torch.Tensor:
+        # Processing the tensor:
+        return self._linears(x)
+
+class MixingBlock(nn.Module):
+    def __init__(
+        self,
+        ch_in: int,
+        ch_out: int,
+    ):
+        super().__init__()
+        self._convmix = nn.Sequential(
+            nn.Conv2d(ch_in, ch_out, 3, groups=ch_out, padding=1),
+            nn.PReLU(),
+            nn.InstanceNorm2d(ch_out),
+        )
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        # Packing the tensors and interleaving the channels:
+        mixed = torch.stack((x, y), dim=2)
+        mixed = torch.reshape(mixed, (x.shape[0], -1, x.shape[2], x.shape[3]))
+
+        # Mixing:
+        return self._convmix(mixed)
+
+class MixingMaskAttentionBlock(nn.Module):
+    """use the grouped convolution to make a sort of attention"""
+
+    def __init__(
+        self,
+        ch_in: int,
+        ch_out: int,
+        fin: List[int],
+        fout: List[int],
+        generate_masked: bool = False,
+    ):
+        super().__init__()
+        self._mixing = MixingBlock(ch_in, ch_out)
+        self._linear = PixelwiseLinear(fin, fout)
+        self._final_normalization = nn.InstanceNorm2d(ch_out) if generate_masked else None
+        self._mixing_out = MixingBlock(ch_in, ch_out) if generate_masked else None
+
+    def forward(self, x: torch.Tensor, y: torch.Tensor) -> torch.Tensor:
+        z_mix = self._mixing(x, y)
+        z = self._linear(z_mix)
+        z_mix_out = 0 if self._mixing_out is None else self._mixing_out(x, y)
+
+        return (
+            z
+            if self._final_normalization is None
+            else self._final_normalization(z_mix_out * z)
+        )
+################################################################
 #Transormer Ecoder with x2, x4, x8, x16 scales
 class EncoderT3(nn.Module):
+    """
+    已弃用,仅T3SAW可用
+    """
     def __init__(self, num_classes=2, embed_dims=[32, 64, 128, 256],
                  num_heads=[2, 2, 4, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=True, qk_scale=None, drop_rate=0.,
                  attn_drop_rate=0., drop_path_rate=0., norm_layer=nn.LayerNorm,
@@ -299,7 +385,7 @@ class EncoderT3(nn.Module):
 
 class DecoderT3(nn.Module):
     """
-    Transformer Decoder
+    已弃用，仅T3SAW可用
     """
     def __init__(self, input_transform='multiple_select', in_index=[0, 1, 2, 3], align_corners=True, 
                     in_channels = [32, 64, 128, 256], embedding_dim= 64, output_nc=2, 
@@ -484,3 +570,4 @@ class DecoderT3(nn.Module):
                 outputs.append(self.active(pred))
 
         return outputs
+

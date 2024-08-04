@@ -16,6 +16,7 @@ from models.SiamUnet_diff import SiamUnet_diff
 from models.SiamUnet_conc import SiamUnet_conc
 from models.Unet import Unet
 from models.DTCDSCN import CDNet34
+from models.Mynet import Mynet
 from datasets.adain import AdaptiveInstanceNormalization as adain
 from memory_profiler import profile
 import objgraph as graph
@@ -132,6 +133,9 @@ def init_net(net, init_type='normal', init_gain=0.02, gpu_ids=[]):
 def define_G(args, init_type='normal', init_gain=0.02, gpu_ids=[]):
     if args.net_G == 'base_resnet18':
         net = ResNet(input_nc=3, output_nc=2, output_sigmoid=False)
+
+    elif args.net_G == 'Mynet':
+        net = Mynet()
 
     elif args.net_G == 'T3SAW':
         net = T3SAW(input_nc=3, output_nc=2, embed_dim=args.embed_dim)
