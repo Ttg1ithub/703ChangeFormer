@@ -16,6 +16,7 @@ class Mynet(nn.Module):
         self.embedding_dim = 64
         self._mixing_mask = nn.ModuleList(
             [
+                MixingMaskAttentionBlock(6, 3, [3, 5, 10], [5, 10, 1]),
                 MixingMaskAttentionBlock(128, 32, [32, 16, 8], [16, 8, 1]),
                 MixingMaskAttentionBlock(256, 64, [64, 16, 8], [16, 8, 1]),
                 MixingMaskAttentionBlock(512, 128, [128, 32, 16], [32, 16, 1]),
@@ -27,17 +28,20 @@ class Mynet(nn.Module):
                 UpMask(2, 256, 128),
                 UpMask(2, 128, 64),
                 UpMask(2, 64, 64),
+                UpMask(4, 64, 32),
             ]
         )
-        #Final predction head
-        self.convd2x    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
-        # self.convd2x2    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
-        self.dense_2x   = nn.Sequential( ResidualBlock(self.embedding_dim))
-        self.convd1x    = UpsampleConvLayer(self.embedding_dim, 32, kernel_size=4, stride=2)
-        # self.convd1x2    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
-        self.dense_1x   = nn.Sequential( ResidualBlock(32))
-        self._classify = PixelwiseLinear([32, 16, 8], [16, 8, 2], nn.Sigmoid())
-
+        # #Final predction head
+        # self.convd2x    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
+        # # self.convd2x2    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
+        # self.dense_2x   = nn.Sequential( ResidualBlock(self.embedding_dim))
+        # self.convd1x    = UpsampleConvLayer(self.embedding_dim, 32, kernel_size=4, stride=2)
+        # # self.convd1x2    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
+        # self.dense_1x   = nn.Sequential( ResidualBlock(32))
+        # # self._classify = PixelwiseLinear([32, 16, 8], [16, 8, 2], nn.Sigmoid())
+        self._classify = nn.Sequential(
+            PixelwiseLinear([32, 16, 8, 4], [16, 8, 4, 2], nn.Softmax(dim=-3))
+        )
         self.decoder = DecoderT3(input_transform='multiple_select', in_index=[0, 1, 2, 3], align_corners=False, 
                     in_channels = self.embed_dims, embedding_dim= self.embedding_dim, output_nc=output_nc, 
                     decoder_softmax = False, feature_strides=[2, 4, 8, 16])
@@ -61,13 +65,14 @@ class Mynet(nn.Module):
         return entire_model
     
     def _res_forward(self,x:torch.Tensor)->list:
+        y = [x]
         x = self.backbone.conv1(x)
         x = self.backbone.bn1(x)
         x = self.backbone.relu(x)
         x = self.backbone.maxpool(x)
 
         x = self.backbone.layer1(x)
-        y = [x]
+        y.append(x)
         x = self.backbone.layer2(x)
         y.append(x)
         x = self.backbone.layer3(x)
@@ -85,7 +90,7 @@ class Mynet(nn.Module):
 
     def _decode(self, features) -> torch.Tensor:
         upping = features[-1]
-        for i, j in enumerate(range(-2, -5, -1)):
+        for i, j in enumerate(range(-2, -2-len(self._up), -1)):
             upping = self._up[i](upping, features[j])
         return upping
 
@@ -93,10 +98,9 @@ class Mynet(nn.Module):
         y1, y2 = [], []
         if type(self.backbone)==torchvision.models.resnet.ResNet:
             y1, y2 = self._res_forward(x1), self._res_forward(x2) 
-        assert len(y1)==4,"backbone张量层数不为4"
         features = self._encode(y1, y2)
         latent = self._decode(features)
-        #Upsampling x2 (x1/2 scale)
+        '''#Upsampling x2 (x1/2 scale)
         x = self.convd2x(latent)
         #Residual block
         x = self.dense_2x(x)
@@ -104,6 +108,6 @@ class Mynet(nn.Module):
         x = self.convd1x(x)
         # x_abs = self.convd1x2(x_abs)
         #Residual block
-        x = self.dense_1x(x)
-        x = self._classify(x)
+        x = self.dense_1x(x)'''
+        x = self._classify(latent)
         return [x]

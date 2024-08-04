@@ -20,6 +20,9 @@ class DataConfig:
         elif data_name == 'TYPO':
             self.label_transform = "norm"
             self.root_dir = '/media/lidan/ssd2/CDData/TYPO/'
+        elif data_name == '1ShotTest':
+            self.label_transform = "norm"
+            self.root_dir = '/mnt/backup/gcw-yhj/ChangeFormer/yhj-dataset/CDData/Test_256'
         elif data_name == 'quick_start_LEVIR':
             self.root_dir = './samples_LEVIR/'
         elif data_name == 'quick_start_DSIFN':

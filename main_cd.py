@@ -41,7 +41,7 @@ if __name__ == '__main__':
     parser.add_argument('--data_name', default='LEVIR', type=str)
     parser.add_argument('--WildData_name', default='CDD', type=str)
 
-    parser.add_argument('--batch_size', default=256, type=int)
+    parser.add_argument('--batch_size', default=80, type=int)
     parser.add_argument('--split', default="train", type=str)
     parser.add_argument('--split_val', default="val", type=str)
 
@@ -64,7 +64,7 @@ if __name__ == '__main__':
     parser.add_argument('--loss', default='ce', type=str)
 
     # optimizer
-    parser.add_argument('--optimizer', default='sgd', type=str)
+    parser.add_argument('--optimizer', default='adam', type=str)
     parser.add_argument('--lr', default=0.01, type=float)
     parser.add_argument('--max_epochs', default=250, type=int)
     parser.add_argument('--lr_policy', default='linear', type=str,
