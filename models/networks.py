@@ -10,7 +10,7 @@ from einops import rearrange
 
 import models
 from models.help_funcs import Transformer, TransformerDecoder, TwoLayerConv2d
-import models.T3SAWBaseNetworks as T3
+# import models.T3SAWBaseNetworks as T3
 from models.ChangeFormer import ChangeFormerV1, ChangeFormerV2, ChangeFormerV3, ChangeFormerV4, ChangeFormerV5, ChangeFormerV6
 from models.SiamUnet_diff import SiamUnet_diff
 from models.SiamUnet_conc import SiamUnet_conc
@@ -464,50 +464,48 @@ class BASE_Transformer(ResNet):
         outputs.extend([z1, z2, ans])
         return outputs
 
-class T3SAW(ResNet):   
-    '''
-    Timporary Symmetry Siamese Swap + Adain Wild
-    '''    
-    def __init__(self, input_nc, output_nc, embed_dim, resnet_stages_num=5, backbone='resnet18', output_sigmoid=False, if_upsample_2x=True):
-        super().__init__(input_nc, output_nc, resnet_stages_num, backbone, output_sigmoid, if_upsample_2x)
-        self.embed_dims = [64,128,256,512]
-        self.PCM = T3.PCM(self.embed_dims, iter=1)
+# class T3SAW(ResNet):      
+#     def __init__(self, input_nc, output_nc, embed_dim, resnet_stages_num=5, backbone='resnet18', output_sigmoid=False, if_upsample_2x=True):
+#         '''已禁用'''
+#         super().__init__(input_nc, output_nc, resnet_stages_num, backbone, output_sigmoid, if_upsample_2x)
+#         self.embed_dims = [64,128,256,512]
+#         self.PCM = T3.PCM(self.embed_dims, iter=1)
 
-        self.depths = [3, 6, 16, 3] #[3, 3, 6, 18, 3]
-        self.drop_rate = 0.0
-        self.attn_drop = 0.0
-        self.drop_path_rate = 0.1 
-        self.encoder = T3.EncoderT3(embed_dims=self.embed_dims, num_heads = [1, 2, 4, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=True, qk_scale=None, drop_rate=self.drop_rate,
-                 attn_drop_rate = self.attn_drop, drop_path_rate=self.drop_path_rate, norm_layer=partial(nn.LayerNorm, eps=1e-6),
-                 depths=self.depths, sr_ratios=[8, 4, 2, 1])
+#         self.depths = [3, 6, 16, 3] #[3, 3, 6, 18, 3]
+#         self.drop_rate = 0.0
+#         self.attn_drop = 0.0
+#         self.drop_path_rate = 0.1 
+#         self.encoder = T3.EncoderT3(embed_dims=self.embed_dims, num_heads = [1, 2, 4, 8], mlp_ratios=[4, 4, 4, 4], qkv_bias=True, qk_scale=None, drop_rate=self.drop_rate,
+#                  attn_drop_rate = self.attn_drop, drop_path_rate=self.drop_path_rate, norm_layer=partial(nn.LayerNorm, eps=1e-6),
+#                  depths=self.depths, sr_ratios=[8, 4, 2, 1])
         
-        self.embedding_dim = embed_dim
-        self.decoder = T3.DecoderT3(input_transform='multiple_select', in_index=[0, 1, 2, 3], align_corners=False, 
-                    in_channels = self.embed_dims, embedding_dim= self.embedding_dim, output_nc=output_nc, 
-                    decoder_softmax = False, feature_strides=[2, 4, 8, 16])
+#         self.embedding_dim = embed_dim
+#         self.decoder = T3.DecoderT3(input_transform='multiple_select', in_index=[0, 1, 2, 3], align_corners=False, 
+#                     in_channels = self.embed_dims, embedding_dim= self.embedding_dim, output_nc=output_nc, 
+#                     decoder_softmax = False, feature_strides=[2, 4, 8, 16])
 
-    def forward(self, x1, x2, imgs_wild=None):
-        # forward backbone resnet
-        x1_ls, x2_ls, x1w_ls, x2w_ls = [], [], [], []
-        if imgs_wild is None:
-            x1, x1_sw = self.forward_single(x1, x_ls=x1_ls)
-            x2, x2_sw = self.forward_single(x2, x_ls=x2_ls)
-        else:
-            x1, x1_sw = self.forward_single(x1,imgs_wild[0], x1_ls, x1w_ls)
-            x2, x2_sw = self.forward_single(x2,imgs_wild[1], x2_ls, x2w_ls)
-            x1w_ls, x2w_ls  = self.PCM(x1w_ls), self.PCM(x2w_ls)
-            x1w_ls, x2w_ls  = self.encoder(x1w_ls), self.encoder(x2w_ls)
-            x1w_ls, x2w_ls  = self.decoder(x1w_ls,x2w_ls)
-        # x1_cont, x2_cont = self.PCM(x1_ls), self.PCM(x2_ls)
-        x1_trans, x2_trans  = self.encoder(x1_ls), self.encoder(x2_ls)
-        outputs = self.decoder(x1_trans, x2_trans)
-        # output_res = self.decoder(x1_res, x2_res)[-1]
-        # output_trans = self.decoder2(x1_trans,x2_trans)[-1]
-        # B, C, H, W = output_res.shape
-        # output = torch.zeros(B, 2*C, H, W).to('cuda')
-        # output[:, 0::2, :, :] = output_res
-        # output[:, 1::2, :, :] = output_trans
-        # output = self.fuse(output)
-        # output = F.softmax(input=output, dim=1)
-        # outputs = [output]
-        return outputs
+#     def forward(self, x1, x2, imgs_wild=None):
+#         # forward backbone resnet
+#         x1_ls, x2_ls, x1w_ls, x2w_ls = [], [], [], []
+#         if imgs_wild is None:
+#             x1, x1_sw = self.forward_single(x1, x_ls=x1_ls)
+#             x2, x2_sw = self.forward_single(x2, x_ls=x2_ls)
+#         else:
+#             x1, x1_sw = self.forward_single(x1,imgs_wild[0], x1_ls, x1w_ls)
+#             x2, x2_sw = self.forward_single(x2,imgs_wild[1], x2_ls, x2w_ls)
+#             x1w_ls, x2w_ls  = self.PCM(x1w_ls), self.PCM(x2w_ls)
+#             x1w_ls, x2w_ls  = self.encoder(x1w_ls), self.encoder(x2w_ls)
+#             x1w_ls, x2w_ls  = self.decoder(x1w_ls,x2w_ls)
+#         # x1_cont, x2_cont = self.PCM(x1_ls), self.PCM(x2_ls)
+#         x1_trans, x2_trans  = self.encoder(x1_ls), self.encoder(x2_ls)
+#         outputs = self.decoder(x1_trans, x2_trans)
+#         # output_res = self.decoder(x1_res, x2_res)[-1]
+#         # output_trans = self.decoder2(x1_trans,x2_trans)[-1]
+#         # B, C, H, W = output_res.shape
+#         # output = torch.zeros(B, 2*C, H, W).to('cuda')
+#         # output[:, 0::2, :, :] = output_res
+#         # output[:, 1::2, :, :] = output_trans
+#         # output = self.fuse(output)
+#         # output = F.softmax(input=output, dim=1)
+#         # outputs = [output]
+#         return outputs

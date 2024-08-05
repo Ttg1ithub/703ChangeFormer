@@ -31,17 +31,17 @@ if __name__ == '__main__':
     # ------------
     parser = ArgumentParser()
     parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-    parser.add_argument('--project_name', default='Mynet', type=str)
+    parser.add_argument('--project_name', default='Mynet+PCMtrans', type=str)
     parser.add_argument('--checkpoint_root', default='/mnt/backup/gcw-yhj/ChangeFormer/checkpoints', type=str)
     parser.add_argument('--vis_root', default='/mnt/backup/gcw-yhj/ChangeFormer/vis', type=str)  
 
     # data
     parser.add_argument('--num_workers', default=4, type=int)
     parser.add_argument('--dataset', default='CDDataset', type=str)
-    parser.add_argument('--data_name', default='LEVIR', type=str)
+    parser.add_argument('--data_name', default='LEVIR', type=str,help='1ShotTest')
     parser.add_argument('--WildData_name', default='CDD', type=str)
 
-    parser.add_argument('--batch_size', default=80, type=int)
+    parser.add_argument('--batch_size', default=64, type=int)
     parser.add_argument('--split', default="train", type=str)
     parser.add_argument('--split_val', default="val", type=str)
 
@@ -65,7 +65,7 @@ if __name__ == '__main__':
 
     # optimizer
     parser.add_argument('--optimizer', default='adam', type=str)
-    parser.add_argument('--lr', default=0.01, type=float)
+    parser.add_argument('--lr', default=0.001, type=float)
     parser.add_argument('--max_epochs', default=250, type=int)
     parser.add_argument('--lr_policy', default='linear', type=str,
                         help='linear | step')

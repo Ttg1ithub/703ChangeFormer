@@ -13,6 +13,7 @@ class Mynet(nn.Module):
         super().__init__(*args, **kwargs)
         self.backbone = self._getBackbone(backbone)
         self.embed_dims = [64, 128, 256, 512]
+        self.scales = [64, 32, 16, 8]
         self.embedding_dim = 64
         self._mixing_mask = nn.ModuleList(
             [
@@ -23,6 +24,8 @@ class Mynet(nn.Module):
                 MixingBlock(1024, 256),
             ]
         )
+        # self.dense = PCMdense([64,128,256,512])
+        self.trans = PCMtrans(self.embed_dims, self.scales)
         self._up = nn.ModuleList(
             [
                 UpMask(2, 256, 128),
@@ -31,20 +34,12 @@ class Mynet(nn.Module):
                 UpMask(4, 64, 32),
             ]
         )
-        # #Final predction head
-        # self.convd2x    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
-        # # self.convd2x2    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
-        # self.dense_2x   = nn.Sequential( ResidualBlock(self.embedding_dim))
-        # self.convd1x    = UpsampleConvLayer(self.embedding_dim, 32, kernel_size=4, stride=2)
-        # # self.convd1x2    = UpsampleConvLayer(self.embedding_dim, self.embedding_dim, kernel_size=4, stride=2)
-        # self.dense_1x   = nn.Sequential( ResidualBlock(32))
-        # # self._classify = PixelwiseLinear([32, 16, 8], [16, 8, 2], nn.Sigmoid())
         self._classify = nn.Sequential(
             PixelwiseLinear([32, 16, 8, 4], [16, 8, 4, 2], nn.Softmax(dim=-3))
         )
-        self.decoder = DecoderT3(input_transform='multiple_select', in_index=[0, 1, 2, 3], align_corners=False, 
-                    in_channels = self.embed_dims, embedding_dim= self.embedding_dim, output_nc=output_nc, 
-                    decoder_softmax = False, feature_strides=[2, 4, 8, 16])
+        # self.decoder = DecoderT3(input_transform='multiple_select', in_index=[0, 1, 2, 3], align_corners=False, 
+        #             in_channels = self.embed_dims, embedding_dim= self.embedding_dim, output_nc=output_nc, 
+        #             decoder_softmax = False, feature_strides=[2, 4, 8, 16])
     def _getBackbone(self, bkbn_name:str, pretrained:bool=True, output_layer_bkbn:str=None, freeze_backbone:bool=False):
         # The whole model:
         entire_model = getattr(torchvision.models, bkbn_name)(
@@ -97,17 +92,10 @@ class Mynet(nn.Module):
     def forward(self,x1,x2,xw=None):
         y1, y2 = [], []
         if type(self.backbone)==torchvision.models.resnet.ResNet:
-            y1, y2 = self._res_forward(x1), self._res_forward(x2) 
+            y1, y2 = self._res_forward(x1), self._res_forward(x2)
+        # y1[1:], y2[1:] = self.dense(y1[1:]), self.dense(y2[1:])
+        y1[1:], y2[1:] = self.trans(y1[1:], y2[1:])
         features = self._encode(y1, y2)
         latent = self._decode(features)
-        '''#Upsampling x2 (x1/2 scale)
-        x = self.convd2x(latent)
-        #Residual block
-        x = self.dense_2x(x)
-        #Upsampling x2 (x1 scale)
-        x = self.convd1x(x)
-        # x_abs = self.convd1x2(x_abs)
-        #Residual block
-        x = self.dense_1x(x)'''
-        x = self._classify(latent)
-        return [x]
+        x = [self._classify(latent)]
+        return x

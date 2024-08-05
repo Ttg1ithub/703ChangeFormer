@@ -3,9 +3,17 @@ import torch.nn as nn
 import torch.nn.functional as F
 from models.ChangeFormer import *
 from typing import List, Optional
+from models.help_funcs import *
  
+def alter_stack(x:List[torch.Tensor], dim:int)->torch.Tensor:
+    shape = list(x[0].shape)
+    y = torch.stack([item for item in x],dim=dim+1)
+    shape[dim] *= len(x)
+    y = torch.reshape(y, tuple(shape))
+    return y
+
 def alternate_stack(tensor1, tensor2, dim):
-    # 确保两个张量的除了指定维度以外的形状相同
+    # 确保两个张量的除了指定维度以外的形状相同,已弃用
     result = torch.stack([tensor1, tensor2],dim=dim+1)
     shape = list(tensor1.shape)
     shape[dim] *= 2
@@ -13,6 +21,7 @@ def alternate_stack(tensor1, tensor2, dim):
     return result
 
 def conv_diff(in_channels, out_channels, groups=None):
+    '''已弃用'''
     groups = groups or out_channels
     return nn.Sequential(
         nn.Conv2d(in_channels, out_channels, kernel_size=3, padding=1, groups=groups),
@@ -82,67 +91,202 @@ class ASPP(nn.Module):
         return self.project(res)
 
 class PCM(nn.Module):
-    """
-    pyramid context module
-
-    """
-    def __init__(self, in_channels:list, dilations:list=None,iter:int=3) -> None:
+    def __init__(self, in_channels:list, scales:list=None,iter:int=3):
         super().__init__()
         self.in_channels = in_channels
-        self.dilations = dilations or [2,3]
+        self.l = len(self.in_channels)
         self.iter = iter
-        self.swapx1 = self._make_swaplayer(0)
-        self.swapx2 = self._make_swaplayer(1)
-        self.swapx3 = self._make_swaplayer(2)
-        self.fusex1 = self._make_fuse(0)
-        self.fusex2 = self._make_fuse(1)
-        self.fusex3 = self._make_fuse(2)
+        self.scales = scales or [64, 32, 16, 8]
+        assert len(self.scales)==self.l
+
+    def forward(self, context:list, context2:list=None)->list:
+        pass
+
+class PCMdense(PCM):
+    def __init__(self, in_channels:list, dilations:list=None, scales:list=None,iter:int=3):
+        """
+        in_channels上下文特征通道列表
+
+        dilations空洞卷积核大小列表
+
+        scales特征图相对大小列表
+        
+        输出和输入同形状
+        """
+        super().__init__(in_channels, scales, iter)
+        self.dilations = dilations or [2,3]
+        # self.swapx1 = self._make_swaplayer(0)
+        # self.swapx2 = self._make_swaplayer(1)
+        # self.swapx3 = self._make_swaplayer(2)
+        self.swap = nn.ModuleList(
+            self._make_swaplayer(i) for i in range(self.l)
+        )
+        # self.fusex1 = self._make_fuse(0)
+        # self.fusex2 = self._make_fuse(1)
+        # self.fusex3 = self._make_fuse(2)
+        self.fuse = nn.ModuleList(
+            self._make_fuse(i) for i in range(self.l)
+        )
 
     def _make_fuse(self, i:int)->nn.Sequential:
         out_channel = self.in_channels[i]
         return nn.Sequential(
-                    nn.Conv2d((4-i)*out_channel, out_channel, 1, bias=False),
+                    nn.Conv2d((self.l-i)*out_channel, out_channel, 1, groups=out_channel, bias=False),
                     nn.BatchNorm2d(out_channel),
                     nn.ReLU(),
-                    nn.Dropout(0.5))
+                    nn.Dropout(0.1))
 
     def _make_swaplayer(self, i:int)->nn.ModuleList:
         swap = []
         out_channel = self.in_channels[i]
-        assert 0<=i<3,"索引i超出范围0~2"
-        for j in range(i+1,4):
+        assert 0<=i<self.l,"索引i超出范围0~l"
+        scales = self.scales
+        for j in range(i,self.l):
+            assert scales[i]%scales[j]==0
             seq = nn.Sequential(
                         ASPP(self.in_channels[j], self.dilations, out_channel),
-                        nn.Upsample(scale_factor=2**(j-i), mode='bilinear')
+                        nn.Upsample(scale_factor=scales[i]/scales[j], mode='bilinear')
                     )
             swap.append(seq)
-        assert len(swap) == 3-i,"swaplayer构建出错"
+        assert len(swap) == self.l-i,"swaplayer构建出错"
         return nn.ModuleList(swap)   
-
-    def tensors_equal(self, tensor_list1, tensor_list2):
-        if len(tensor_list1) != len(tensor_list2):
-            return False
-        for t1, t2 in zip(tensor_list1, tensor_list2):
-            if not torch.equal(t1, t2):
-                return False
-        return True
 
     def forward(self, context:list)->list:
         out_context = [item for item in context]
 
-        for k in range(self.iter):
-            out_context[2] = torch.cat([out_context[2], self.swapx3[0](out_context[3])], dim=1)
-            out_context[2] = self.fusex3(out_context[2])
+        for _ in range(self.iter):
+            for i in range(self.l-1,-1,-1):
+                out_context[i] = alter_stack([self.swap[i][k-i](out_context[k]) for k in range(i,self.l)], dim=1)
+                out_context[i] = self.fuse[i](out_context[i])
+            '''out_context[2] = torch.cat([out_context[2], self.swap[2](out_context[3])], dim=1)
+            out_context[2] = self.fuse[2](out_context[2])
 
-            out_context[1] = torch.cat([out_context[1], self.swapx2[0](out_context[2]), self.swapx2[1](out_context[3])], dim=1)
-            out_context[1] = self.fusex2(out_context[1])
+            out_context[1] = torch.cat([out_context[1], self.swap[1][0](out_context[2]), self.swap[1][1](out_context[3])], dim=1)
+            out_context[1] = self.fuse[1](out_context[1])
 
-            out_context[0] = torch.cat([out_context[0], self.swapx1[0](out_context[1]), 
-                                    self.swapx1[1](out_context[2]), self.swapx1[2](out_context[3])], dim=1)
-            out_context[0] = self.fusex1(out_context[0])
+            out_context[0] = torch.cat([out_context[0], self.swap[0][0](out_context[1]), 
+                                    self.swap[0][1](out_context[2]), self.swap[0][2](out_context[3])], dim=1)
+            out_context[0] = self.fuse[0](out_context[0])'''
 
-        # assert not self.tensors_equal(out_context, context), "swap失效"
         return out_context
+
+def generate_2_sequence(a, b):
+    # 确保 a 和 b 都是 2 的幂
+    if not (a & (a - 1) == 0 and b & (b - 1) == 0):
+        raise ValueError("Both a and b must be powers of 2.")
+    
+    # 确保 a 小于 b
+    if a >= b:
+        raise ValueError("a must be less than b.")
+
+    sequence = []
+    current = a
+
+    while current <= b:
+        sequence.append(current)
+        current *= 2  # 每次乘以 2
+
+    return sequence
+
+class PCMtrans(PCM):
+    def __init__(self, in_channels: List, scales: List = None, iter: int = 3):
+        super().__init__(in_channels, scales, iter)
+        self.token_len = 16
+        self.conv_a = nn.ModuleList(
+            nn.Conv2d(in_channels[k], self.token_len, kernel_size=1,
+                                padding=0, bias=False)
+            for k in range(self.l) )
+        self.with_pos = True
+        self.with_decoder_pos = True
+        self.pos_embedding = nn.ParameterDict({
+                                f'{k}': nn.Parameter(torch.randn(1, self.token_len*2, in_channels[k]))
+                                for k in range(self.l)})
+        self.pos_embedding_decoder = nn.ParameterDict({
+                            f'{k}': nn.Parameter(torch.randn(1, in_channels[k],
+                                    self.scales[k], self.scales[k]))
+                                    for k in range(self.l)})
+        self.dim_head = 64
+        self.tokentrans = nn.ModuleList(
+            nn.ModuleList(
+                nn.Sequential(
+                    nn.Linear(self.in_channels[n],self.in_channels[n]+self.in_channels[m]),
+                    nn.Linear(self.in_channels[n]+self.in_channels[m],
+                              self.in_channels[n]+self.in_channels[m]),
+                    nn.Linear(self.in_channels[n]+self.in_channels[m],
+                                self.in_channels[m])
+                )
+                for m in range(self.l)
+            )
+            for n in range(self.l)
+        )
+        self.transformer = nn.ModuleList(Transformer(dim=in_channels[k], depth=1, heads=8,
+                                       dim_head=self.dim_head,
+                                       mlp_dim=2*in_channels[k], dropout=0.1)
+                                       for k in range(self.l))
+        self.transformer_decoder = nn.ModuleList(TransformerDecoder(dim=in_channels[k], depth=1,
+                            heads=8, dim_head=self.dim_head, mlp_dim=2*in_channels[k],
+                              dropout=0.1, softmax=True)
+                            for k in range(self.l))
+        self.fuse = nn.ModuleList(
+            nn.Conv2d(in_channels[k]*self.l, in_channels[k],kernel_size=1,groups=in_channels[k])
+            for k in range(self.l))
+    def _forward_semantic_tokens(self, x):
+        b, c, h, w = x.shape
+        k = self.in_channels.index(c)
+        spatial_attention = self.conv_a[k](x)
+        spatial_attention = spatial_attention.view([b, self.token_len, -1]).contiguous()
+        spatial_attention = torch.softmax(spatial_attention, dim=-1)
+        x = x.view([b, c, -1]).contiguous()
+        tokens = torch.einsum('bln,bcn->blc', spatial_attention, x)
+
+        return tokens
+
+    def _forward_transformer(self, x):
+        k = self.in_channels.index(x.size(2))
+        if self.with_pos:
+            x += self.pos_embedding[f'{k}']
+        x = self.transformer[k](x)
+        return x
+
+    def _forward_transformer_decoder(self, x, m):
+        b, c, h, w = x.shape
+        k = self.in_channels.index(x.size(1))
+        km = self.in_channels.index(m.size(2))
+        if self.with_decoder_pos:
+            x = x + self.pos_embedding_decoder[f'{k}']
+        x = rearrange(x, 'b c h w -> b (h w) c')
+        m = self.tokentrans[km][k](m)
+        x = self.transformer_decoder[k](x, m)
+        x = rearrange(x, 'b (h w) c -> b c h w', h=h)
+        return x
+
+    def _forward_BIT(self, cont1, cont2, i, j):
+        """i:mask id | j:query id"""
+        x1, x2, m1, m2 = cont1[j], cont2[j], cont1[i], cont2[i]
+        #  forward tokenzier
+        token1 = self._forward_semantic_tokens(m1)
+        token2 = self._forward_semantic_tokens(m2)
+        # forward transformer encoder
+        self.tokens_ = alter_stack([token1, token2], dim=1)
+        self.tokens = self._forward_transformer(self.tokens_)
+        token1, token2 = self.tokens.chunk(2, dim=1)
+        # forward transformer decoder
+        x1 = self._forward_transformer_decoder(x1, token1)
+        x2 = self._forward_transformer_decoder(x2, token2)
+        return x1, x2
+
+    def forward(self, cont1:List[torch.Tensor], cont2:List[torch.Tensor]):
+        y1, y2 = [], []
+        for j in range(self.l):
+            z1, z2 = [], []
+            for i in range(self.l):
+                c1, c2 = self._forward_BIT(cont1, cont2, i, j)
+                z1.append(c1)
+                z2.append(c2)
+            y1.append(self.fuse[j](alter_stack(z1, dim=1)))
+            y2.append(self.fuse[j](alter_stack(z2, dim=1)))
+        
+        return y1, y2
 ################################################################
 class UpMask(nn.Module):
     def __init__(
