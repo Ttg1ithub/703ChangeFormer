@@ -25,7 +25,7 @@ class Mynet(nn.Module):
             ]
         )
         # self.dense = PCMdense([64,128,256,512])
-        self.trans = PCMtrans(self.embed_dims, self.scales)
+        # self.trans = PCMtrans(self.embed_dims, self.scales)
         self._up = nn.ModuleList(
             [
                 UpMask(2, 256, 128),
@@ -37,6 +37,7 @@ class Mynet(nn.Module):
         self._classify = nn.Sequential(
             PixelwiseLinear([32, 16, 8, 4], [16, 8, 4, 2], nn.Softmax(dim=-3))
         )
+        # self.predfuse = nn.Conv2d(4,2,3,padding=1)
         # self.decoder = DecoderT3(input_transform='multiple_select', in_index=[0, 1, 2, 3], align_corners=False, 
         #             in_channels = self.embed_dims, embedding_dim= self.embedding_dim, output_nc=output_nc, 
         #             decoder_softmax = False, feature_strides=[2, 4, 8, 16])
@@ -94,8 +95,12 @@ class Mynet(nn.Module):
         if type(self.backbone)==torchvision.models.resnet.ResNet:
             y1, y2 = self._res_forward(x1), self._res_forward(x2)
         # y1[1:], y2[1:] = self.dense(y1[1:]), self.dense(y2[1:])
-        y1[1:], y2[1:] = self.trans(y1[1:], y2[1:])
+        # y1[1:], y2[1:] = self.trans(y1[1:], y2[1:])
         features = self._encode(y1, y2)
         latent = self._decode(features)
-        x = [self._classify(latent)]
-        return x
+        x = self._classify(latent)
+        # featuresr = self._encode(y2, y1)
+        # latentr = self._decode(featuresr)
+        # xr = self._classify(latentr)
+        # y = self.predfuse(torch.cat([x,xr],dim=1))
+        return [x]

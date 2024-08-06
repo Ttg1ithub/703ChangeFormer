@@ -15,15 +15,15 @@ def main():
     # ------------
     parser = ArgumentParser()
     parser.add_argument('--gpu_ids', type=str, default='0,1', help='gpu ids: e.g. 0  0,1,2, 0,2. use -1 for CPU')
-    parser.add_argument('--project_name', default='Mynet+PCMdense', type=str)
+    parser.add_argument('--project_name', default='Mynet', type=str)
     parser.add_argument('--print_models', default=False, type=bool, help='print models')
     parser.add_argument('--checkpoints_root', default='/mnt/backup/gcw-yhj/ChangeFormer/checkpoints', type=str)
     parser.add_argument('--vis_root', default='/mnt/backup/gcw-yhj/ChangeFormer/vis', type=str)
 
     # data
     parser.add_argument('--num_workers', default=4, type=int)
-    parser.add_argument('--dataset', default='CDDataset', type=str)
-    parser.add_argument('--data_name', default='WHU', type=str)
+    parser.add_argument('--dataset', default='LEVIR', type=str)
+    parser.add_argument('--data_name', default='LEVIR', type=str)
 
     parser.add_argument('--batch_size', default=32, type=int)
     parser.add_argument('--split', default="test", type=str)
